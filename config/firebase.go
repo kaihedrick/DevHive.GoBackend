@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"encoding/base64"
 	"log"
 	"os"
 
@@ -19,26 +20,51 @@ var (
 
 // InitFirebase initializes Firebase with the service account key
 func InitFirebase() error {
-	// Get the service account key path from environment
-	serviceAccountKeyPath := os.Getenv("FIREBASE_SERVICE_ACCOUNT_KEY_PATH")
-	if serviceAccountKeyPath == "" {
-		serviceAccountKeyPath = "firebase-service-account.json"
+	var app *firebase.App
+	var err error
+
+	// First try to use base64 encoded Firebase JSON from Fly.io
+	firebaseJSONBase64 := os.Getenv("FIREBASE_JSON_BASE64")
+	if firebaseJSONBase64 != "" {
+		// Decode base64 and use credentials from memory
+		decoded, err := base64.StdEncoding.DecodeString(firebaseJSONBase64)
+		if err != nil {
+			log.Printf("Error decoding base64 Firebase JSON: %v", err)
+		} else {
+			// Initialize Firebase with credentials from memory
+			opt := option.WithCredentialsJSON(decoded)
+			app, err = firebase.NewApp(context.Background(), nil, opt)
+			if err != nil {
+				log.Printf("Error initializing Firebase with base64 JSON: %v", err)
+			} else {
+				FirebaseApp = app
+				log.Println("Firebase initialized with base64 JSON successfully")
+			}
+		}
 	}
 
-	// Check if service account key file exists
-	if _, err := os.Stat(serviceAccountKeyPath); os.IsNotExist(err) {
-		log.Printf("Warning: Firebase service account key not found at %s", serviceAccountKeyPath)
-		log.Println("Firebase authentication will be disabled")
-		return nil
-	}
+	// Fallback to service account key path if base64 not available
+	if FirebaseApp == nil {
+		serviceAccountKeyPath := os.Getenv("FIREBASE_SERVICE_ACCOUNT_KEY_PATH")
+		if serviceAccountKeyPath == "" {
+			serviceAccountKeyPath = "firebase-service-account.json"
+		}
 
-	// Initialize Firebase app
-	opt := option.WithCredentialsFile(serviceAccountKeyPath)
-	app, err := firebase.NewApp(context.Background(), nil, opt)
-	if err != nil {
-		return err
+		// Check if service account key file exists
+		if _, err := os.Stat(serviceAccountKeyPath); os.IsNotExist(err) {
+			log.Printf("Warning: Firebase service account key not found at %s", serviceAccountKeyPath)
+			log.Println("Firebase authentication will be disabled")
+			return nil
+		}
+
+		// Initialize Firebase app
+		opt := option.WithCredentialsFile(serviceAccountKeyPath)
+		app, err = firebase.NewApp(context.Background(), nil, opt)
+		if err != nil {
+			return err
+		}
+		FirebaseApp = app
 	}
-	FirebaseApp = app
 
 	// Initialize Firebase Auth
 	authClient, err := app.Auth(context.Background())

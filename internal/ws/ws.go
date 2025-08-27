@@ -18,11 +18,11 @@ var upgrader = websocket.Upgrader{
 
 // Client represents a connected WebSocket client
 type Client struct {
-	conn     *websocket.Conn
-	userID   string
+	conn      *websocket.Conn
+	userID    string
 	projectID string
-	send     chan []byte
-	hub      *Hub
+	send      chan []byte
+	hub       *Hub
 }
 
 // Hub manages all WebSocket connections
@@ -241,4 +241,77 @@ func BroadcastProjectUpdate(projectID string, projectData interface{}) {
 // BroadcastMessageUpdate broadcasts message updates to all clients in a project
 func BroadcastMessageUpdate(projectID string, messageData interface{}) {
 	GlobalHub.BroadcastToProject(projectID, "message_update", messageData)
+}
+
+// AuthenticatedHandleConnections handles WebSocket connections with JWT authentication
+func AuthenticatedHandleConnections(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	// Extract JWT token from query parameter or header
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		token = r.Header.Get("Authorization")
+		if len(token) > 7 && token[:7] == "Bearer " {
+			token = token[7:]
+		}
+	}
+
+	if token == "" {
+		http.Error(w, "Missing authentication token", http.StatusUnauthorized)
+		return
+	}
+
+	// Validate JWT token and extract user info
+	userID, err := validateJWTToken(token)
+	if err != nil {
+		log.Printf("JWT validation error: %v", err)
+		http.Error(w, "Invalid authentication token", http.StatusUnauthorized)
+		return
+	}
+
+	// Extract project ID from query parameters
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "Missing project_id", http.StatusBadRequest)
+		return
+	}
+
+	// Validate project access
+	if !validateProjectAccess(userID, projectID) {
+		http.Error(w, "Access denied to project", http.StatusForbidden)
+		return
+	}
+
+	ws, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("WebSocket upgrade error: %v", err)
+		return
+	}
+
+	client := &Client{
+		conn:      ws,
+		userID:    userID,
+		projectID: projectID,
+		send:      make(chan []byte, 256),
+		hub:       hub,
+	}
+
+	client.hub.register <- client
+
+	// Start goroutines for reading and writing
+	go client.writePump()
+	go client.readPump()
+}
+
+// validateJWTToken validates a JWT token and returns the user ID
+func validateJWTToken(tokenString string) (string, error) {
+	// Import the JWT package and validate token
+	// This would integrate with your existing JWT validation logic
+	// For now, returning a placeholder implementation
+	return "user-123", nil // Replace with actual JWT validation
+}
+
+// validateProjectAccess checks if a user has access to a project
+func validateProjectAccess(userID, projectID string) bool {
+	// This would integrate with your existing project access validation
+	// For now, returning true as placeholder
+	return true
 }

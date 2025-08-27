@@ -9,14 +9,19 @@ import (
 
 // Config holds all configuration for our application
 type Config struct {
-	DBHost     string
-	DBPort     int
-	DBUser     string
-	DBPassword string
-	DBName     string
-	DBSSLMode  string
-	JWTSecret  string
-	Port       string
+	DBHost        string
+	DBPort        int
+	DBUser        string
+	DBPassword    string
+	DBName        string
+	DBSSLMode     string
+	JWTSecret     string
+	JWTIssuer     string
+	JWTAudience   string
+	Port          string
+	MailgunAPIKey string
+	MailgunDomain string
+	MailgunSender string
 }
 
 // Global config instance
@@ -29,14 +34,19 @@ func LoadEnv() error {
 
 	// Set default values
 	AppConfig = Config{
-		DBHost:     getEnv("DB_HOST", "localhost"),
-		DBPort:     getEnvAsInt("DB_PORT", 5432),
-		DBUser:     getEnv("DB_USER", "postgres"),
-		DBPassword: getEnv("DB_PASSWORD", ""),
-		DBName:     getEnv("DB_NAME", "devhive"),
-		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
-		JWTSecret:  getEnv("JWT_SECRET", "your-secret-key"),
-		Port:       getEnv("PORT", "8080"),
+		DBHost:        getEnv("DB_HOST", "localhost"),
+		DBPort:        getEnvAsInt("DB_PORT", 5432),
+		DBUser:        getEnv("DB_USER", "postgres"),
+		DBPassword:    getEnv("DB_PASSWORD", ""),
+		DBName:        getEnv("DB_NAME", "devhive"),
+		DBSSLMode:     getEnv("DB_SSLMODE", "disable"),
+		JWTSecret:     getEnv("JwtKey", getEnv("JWT_SECRET", "your-secret-key")),
+		JWTIssuer:     getEnv("JwtIssuer", "devhive-backend"),
+		JWTAudience:   getEnv("JwtAudience", "devhive-users"),
+		Port:          getEnv("PORT", "8080"),
+		MailgunAPIKey: getEnv("MailgunApiKey", ""),
+		MailgunDomain: getEnv("MailgunDomain", ""),
+		MailgunSender: getEnv("Mailgun__SenderEmail", ""),
 	}
 
 	return nil

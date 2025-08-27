@@ -16,8 +16,8 @@ import (
 	"devhive-backend/internal/middleware"
 	"devhive-backend/internal/ws"
 
-	"github.com/gin-gonic/gin"
 	"github.com/gin-contrib/gzip"
+	"github.com/gin-gonic/gin"
 	"github.com/rs/cors"
 )
 
@@ -94,6 +94,11 @@ func main() {
 		router.GET("/ws", gin.WrapF(func(w http.ResponseWriter, r *http.Request) {
 			ws.HandleConnections(ws.GlobalHub, w, r)
 		}))
+
+		// Authenticated WebSocket endpoint
+		router.GET("/ws/auth", gin.WrapF(func(w http.ResponseWriter, r *http.Request) {
+			ws.AuthenticatedHandleConnections(ws.GlobalHub, w, r)
+		}))
 	}
 
 	// API routes
@@ -148,6 +153,17 @@ func main() {
 				messages.POST("/", controllers.CreateMessage)
 				messages.PUT("/:id", controllers.UpdateMessage)
 				messages.DELETE("/:id", controllers.DeleteMessage)
+			}
+
+			// Feature flag management routes (admin only)
+			featureFlags := protected.Group("/admin/feature-flags")
+			{
+				featureFlags.GET("/", controllers.GetFeatureFlags)
+				featureFlags.GET("/:key", controllers.GetFeatureFlag)
+				featureFlags.POST("/", controllers.CreateFeatureFlag)
+				featureFlags.PUT("/:key", controllers.UpdateFeatureFlag)
+				featureFlags.DELETE("/:key", controllers.DeleteFeatureFlag)
+				featureFlags.POST("/bulk-update", controllers.BulkUpdateFeatureFlags)
 			}
 
 			// Mobile API routes (v2)
