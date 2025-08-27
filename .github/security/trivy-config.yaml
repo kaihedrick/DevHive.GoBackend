@@ -1,0 +1,69 @@
+# Trivy Configuration for DevHive Go Backend
+# This file configures Trivy vulnerability scanning
+
+# Scan configuration
+scan:
+  # Scan types: fs (filesystem), repo (repository), image (container image)
+  type: fs
+  
+  # Severity levels to report
+  severity: CRITICAL,HIGH,MEDIUM
+  
+  # Exit code when vulnerabilities are found
+  exit-code: 1
+  
+  # Ignore unmaintained packages
+  ignore-unfixed: false
+  
+  # Skip directories
+  skip-dirs:
+    - .git
+    - node_modules
+    - vendor
+    - .github
+    - docs
+    - testdata
+
+# Vulnerability database
+db:
+  # Update vulnerability database before scanning
+  update: true
+  
+  # Skip database update if it's recent
+  skip-update: false
+
+# Cache configuration
+cache:
+  # Cache directory
+  dir: .trivycache
+  
+  # Skip cache
+  skip: false
+
+# Output configuration
+output:
+  # Output format: table, json, sarif, template
+  format: sarif
+  
+  # Output file
+  output: trivy-results.sarif
+  
+  # Print results to stdout
+  print-results: true
+
+# Go-specific settings
+go:
+  # Scan Go modules
+  modules: true
+  
+  # Scan Go binaries
+  binaries: true
+  
+  # Ignore test files
+  ignore-tests: true
+
+# Ignore specific vulnerabilities (if needed)
+# Add CVE IDs here that are false positives or acceptable risks
+ignore:
+  # Example: - CVE-2021-12345
+  # Example: - CVE-2022-67890

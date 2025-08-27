@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [ main ]
 
+# Required permissions for security scanning and deployment
+permissions:
+  contents: read
+  security-events: write
+  deployments: write
+
 env:
   FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -50,7 +56,7 @@ jobs:
             curl -f https://devhive-backend-staging.fly.dev/health || exit 1
 
   test:
-    name: Run tests
+    name: Run tests and security checks
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
 
@@ -80,6 +86,23 @@ jobs:
             exit 1
           fi
 
+      - name: Run Trivy vulnerability scanner (PR)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results-pr.sarif'
+          severity: 'CRITICAL,HIGH'
+          config: '.github/security/trivy-config.yaml'
+
+      - name: Upload PR security results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && success()
+        with:
+          sarif_file: 'trivy-results-pr.sarif'
+          category: 'Trivy PR Security Scan'
+
   security:
     name: Security scan
     runs-on: ubuntu-latest
@@ -95,9 +118,22 @@ jobs:
           scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          config: '.github/security/trivy-config.yaml'
 
-      - name: Upload Trivy scan results
+      - name: Check Trivy results
+        run: |
+          if [ -f "trivy-results.sarif" ]; then
+            echo "Trivy scan completed successfully"
+            ls -la trivy-results.sarif
+          else
+            echo "Trivy scan failed - no results file found"
+            exit 1
+          fi
+
+      - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && success()
         with:
           sarif_file: 'trivy-results.sarif'
+          category: 'Trivy Security Scan'
