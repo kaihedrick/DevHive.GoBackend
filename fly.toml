@@ -1,0 +1,61 @@
+app = "devhive-backend"
+primary_region = "dfw"
+
+[env]
+  PORT = "8080"
+  GIN_MODE = "release"
+  DB_HOST = "your-postgres-host"
+  DB_PORT = "5432"
+  DB_USER = "your-postgres-user"
+  DB_PASSWORD = "your-postgres-password"
+  DB_NAME = "devhive"
+  DB_SSLMODE = "require"
+  JWT_SECRET = "your-super-secret-jwt-key-change-in-production"
+  FIREBASE_SERVICE_ACCOUNT_KEY_PATH = "/secrets/firebase.json"
+  FIREBASE_STORAGE_BUCKET = "your-firebase-storage-bucket"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 100
+
+  [http_service.headers]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+
+  [[http_service.checks]]
+    type = "http"
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "5s"
+    method = "GET"
+    path = "/health"
+    [http_service.checks.headers]
+      Host = "api.devhive.it.com"
+
+[[mounts]]
+  source = "devhive_data"
+  destination = "/app/static"
+
+[[domains]]
+  name = "api.devhive.it.com"
+
+[processes]
+  app = "devhive"
+
+[deploy]
+  strategy = "immediate"
+  release_command = "echo 'Deployment completed'"
+
+[metrics]
+  port = 9091
+  path = "/metrics"
