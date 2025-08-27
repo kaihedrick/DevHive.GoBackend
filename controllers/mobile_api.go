@@ -8,7 +8,6 @@ import (
 	"devhive-backend/db"
 	"devhive-backend/internal/flags"
 	"devhive-backend/models"
-	"devhive-backend/controllers"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -53,7 +52,7 @@ func GetMobileSprints(c *gin.Context) {
 		return
 	}
 
-	userID := controllers.GetCurrentUserID(c)
+	userID := GetCurrentUserID(c)
 	if userID == uuid.Nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
@@ -105,7 +104,7 @@ func GetMobileProjects(c *gin.Context) {
 		return
 	}
 
-	userID := controllers.GetCurrentUserID(c)
+	userID := GetCurrentUserID(c)
 	if userID == uuid.Nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
@@ -138,7 +137,7 @@ func GetMobileProject(c *gin.Context) {
 		return
 	}
 
-	userID := controllers.GetCurrentUserID(c)
+	userID := GetCurrentUserID(c)
 	if userID == uuid.Nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
@@ -193,7 +192,7 @@ func GetMobileMessages(c *gin.Context) {
 		return
 	}
 
-	userID := controllers.GetCurrentUserID(c)
+	userID := GetCurrentUserID(c)
 	if userID == uuid.Nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
@@ -239,32 +238,19 @@ func GetMobileMessages(c *gin.Context) {
 		return
 	}
 
-	// Apply pagination
-	total := len(messages)
-	start := offset
-	end := offset + limit
-	if start >= total {
-		start = total
-	}
-	if end > total {
-		end = total
-	}
-
-	paginatedMessages := messages[start:end]
-
 	// Convert to mobile format
-	mobileMessages := make([]MobileMessage, len(paginatedMessages))
-	for i, message := range paginatedMessages {
+	mobileMessages := make([]MobileMessage, len(messages))
+	for i, message := range messages {
 		mobileMessages[i] = convertToMobileMessage(message)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"messages": mobileMessages,
 		"pagination": gin.H{
-			"total":    total,
+			"total":    len(messages),
 			"limit":    limit,
 			"offset":   offset,
-			"has_more": end < total,
+			"has_more": len(messages) == limit,
 		},
 	})
 }

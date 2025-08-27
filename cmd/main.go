@@ -91,7 +91,9 @@ func main() {
 
 	// WebSocket endpoint for real-time updates
 	if flags.IsEnabledGlobal("enable_websockets") {
-		router.GET("/ws", gin.WrapF(ws.HandleConnections))
+		router.GET("/ws", gin.WrapF(func(w http.ResponseWriter, r *http.Request) {
+			ws.HandleConnections(ws.GlobalHub, w, r)
+		}))
 	}
 
 	// API routes
@@ -146,6 +148,18 @@ func main() {
 				messages.POST("/", controllers.CreateMessage)
 				messages.PUT("/:id", controllers.UpdateMessage)
 				messages.DELETE("/:id", controllers.DeleteMessage)
+			}
+
+			// Mobile API routes (v2)
+			if flags.IsEnabledGlobal("mobile_v2_api") {
+				mobile := protected.Group("/mobile/v2")
+				{
+					mobile.Use(middleware.MobileRateLimit())
+					mobile.GET("/projects", controllers.GetMobileProjects)
+					mobile.GET("/projects/:id", controllers.GetMobileProject)
+					mobile.GET("/projects/:projectId/sprints", controllers.GetMobileSprints)
+					mobile.GET("/projects/:projectId/messages", controllers.GetMobileMessages)
+				}
 			}
 		}
 	}
