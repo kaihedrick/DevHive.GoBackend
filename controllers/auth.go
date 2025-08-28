@@ -12,28 +12,33 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // AuthRequest represents the authentication request
+// @Description Authentication request for login
 type AuthRequest struct {
-	FirebaseIDToken string `json:"firebase_id_token" binding:"required"`
+	Username string `json:"username" binding:"required" example:"johndoe"`
+	Password string `json:"password" binding:"required" example:"password123"`
 }
 
 // RegisterRequest represents the user registration request
+// @Description User registration request
 type RegisterRequest struct {
-	FirebaseIDToken string `json:"firebase_id_token" binding:"required"`
-	Email           string `json:"email" binding:"required,email"`
-	Username        string `json:"username" binding:"required,min=3,max=100"`
-	FirstName       string `json:"first_name" binding:"required,min=1,max=100"`
-	LastName        string `json:"last_name" binding:"required,min=1,max=100"`
+	Username  string `json:"username" binding:"required,min=3,max=30" example:"johndoe"`
+	Password  string `json:"password" binding:"required,min=6,max=100" example:"password123"`
+	Email     string `json:"email" binding:"required,email" example:"john@example.com"`
+	FirstName string `json:"first_name" binding:"required,min=1,max=50" example:"John"`
+	LastName  string `json:"last_name" binding:"required,min=1,max=50" example:"Doe"`
 }
 
 // AuthResponse represents the authentication response
+// @Description Authentication response with tokens
 type AuthResponse struct {
 	User         *models.User `json:"user"`
-	AccessToken  string       `json:"access_token"`
-	RefreshToken string       `json:"refresh_token"`
-	ExpiresIn    int64        `json:"expires_in"`
+	AccessToken  string       `json:"access_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+	RefreshToken string       `json:"refresh_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+	ExpiresIn    int64        `json:"expires_in" example:"3600"`
 }
 
 // Claims represents JWT claims
@@ -44,6 +49,17 @@ type Claims struct {
 }
 
 // Register handles user registration
+// @Summary Register a new user
+// @Description Create a new user account
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param user body RegisterRequest true "User registration request"
+// @Success 201 {object} models.User "User created successfully"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 409 {object} map[string]string "Username or email already taken"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /auth/register [post]
 func Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -51,44 +67,44 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// Verify Firebase ID token
-	firebaseUID, err := config.VerifyFirebaseToken(req.FirebaseIDToken)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Firebase token"})
-		return
-	}
-
 	// Check if user already exists
-	existingUser, err := models.GetUserByFirebaseUID(db.GetDB(), firebaseUID)
+	existingUser, err := models.GetUserByUsername(db.GetDB(), req.Username)
 	if err != nil && err != sql.ErrNoRows {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 
 	if existingUser != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "User already exists"})
+		c.JSON(http.StatusConflict, gin.H{"error": "Username already taken"})
 		return
 	}
 
-	// Check if username is already taken
-	existingUsername, err := models.GetUserByEmail(db.GetDB(), req.Email)
+	// Check if email is already registered
+	existingEmail, err := models.GetUserByEmail(db.GetDB(), req.Email)
 	if err != nil && err != sql.ErrNoRows {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 
-	if existingUsername != nil {
+	if existingEmail != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "Email already registered"})
+		return
+	}
+
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
 		return
 	}
 
 	// Create user
 	userReq := models.UserCreateRequest{
-		FirebaseUID: firebaseUID,
-		Email:       req.Email,
-		Username:    req.Username,
-		FirstName:   req.FirstName,
-		LastName:    req.LastName,
+		Username:  req.Username,
+		Password:  string(hashedPassword),
+		Email:     req.Email,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
 	}
 
 	user, err := models.CreateUser(db.GetDB(), userReq)
@@ -115,6 +131,17 @@ func Register(c *gin.Context) {
 }
 
 // Login handles user login
+// @Summary Authenticate user
+// @Description Authenticate user with username and password
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param credentials body AuthRequest true "User credentials"
+// @Success 200 {object} AuthResponse "Authentication successful"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 401 {object} map[string]string "Invalid credentials"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /auth/login [post]
 func Login(c *gin.Context) {
 	var req AuthRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -122,21 +149,27 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// Verify Firebase ID token
-	firebaseUID, err := config.VerifyFirebaseToken(req.FirebaseIDToken)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Firebase token"})
-		return
-	}
-
 	// Get user from database
-	user, err := models.GetUserByFirebaseUID(db.GetDB(), firebaseUID)
+	user, err := models.GetUserByUsername(db.GetDB(), req.Username)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	// Check if user is active
+	if !user.Active {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Account is deactivated"})
+		return
+	}
+
+	// Verify password
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
 
@@ -158,6 +191,18 @@ func Login(c *gin.Context) {
 }
 
 // RefreshToken handles token refresh
+// @Summary Refresh access token
+// @Description Refresh access token using refresh token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param refresh body object true "Refresh token request" schema(object{refresh_token=string})
+// @Success 200 {object} AuthResponse "Token refreshed successfully"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 401 {object} map[string]string "Invalid refresh token"
+// @Failure 404 {object} map[string]string "User not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /auth/refresh [post]
 func RefreshToken(c *gin.Context) {
 	var req struct {
 		RefreshToken string `json:"refresh_token" binding:"required"`

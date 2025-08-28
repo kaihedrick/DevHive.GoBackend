@@ -4,8 +4,6 @@ import (
 	"net/http"
 	"time"
 
-	"devhive-backend/internal/flags"
-
 	"github.com/gin-gonic/gin"
 	limiter "github.com/ulule/limiter/v3"
 	"github.com/ulule/limiter/v3/drivers/store/memory"
@@ -28,21 +26,10 @@ var (
 		Requests: 20,
 		Period:   time.Minute,
 	}
-
-	MobileRateLimitConfig = RateLimitConfig{
-		Requests: 200,
-		Period:   time.Minute,
-	}
 )
 
 // RateLimiter creates a rate limiting middleware
 func RateLimiter(config RateLimitConfig) gin.HandlerFunc {
-	// Check if rate limiting is enabled
-	if !flags.IsEnabledGlobal("rate_limiting") {
-		return func(c *gin.Context) {
-			c.Next()
-		}
-	}
 
 	// Create a new rate limiter
 	store := memory.NewStore()
@@ -77,10 +64,10 @@ func RateLimiter(config RateLimitConfig) gin.HandlerFunc {
 				c.Header("Retry-After", string(rune(context.Reset)))
 
 				c.JSON(http.StatusTooManyRequests, gin.H{
-					"error": "Rate limit exceeded",
-					"limit": context.Limit,
+					"error":     "Rate limit exceeded",
+					"limit":     context.Limit,
 					"remaining": context.Remaining,
-					"reset": context.Reset,
+					"reset":     context.Reset,
 				})
 				c.Abort()
 				return
@@ -119,11 +106,6 @@ func getClientIdentifier(c *gin.Context) string {
 // RateLimitByUser creates a rate limiting middleware that limits by user ID
 func RateLimitByUser(config RateLimitConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check if rate limiting is enabled
-		if !flags.IsEnabledGlobal("rate_limiting") {
-			c.Next()
-			return
-		}
 
 		// Get user ID from context
 		userID, exists := c.Get("userID")
@@ -159,10 +141,10 @@ func RateLimitByUser(config RateLimitConfig) gin.HandlerFunc {
 			c.Header("Retry-After", string(rune(context.Reset)))
 
 			c.JSON(http.StatusTooManyRequests, gin.H{
-				"error": "Rate limit exceeded",
-				"limit": context.Limit,
+				"error":     "Rate limit exceeded",
+				"limit":     context.Limit,
 				"remaining": context.Remaining,
-				"reset": context.Reset,
+				"reset":     context.Reset,
 			})
 			c.Abort()
 			return
@@ -175,11 +157,6 @@ func RateLimitByUser(config RateLimitConfig) gin.HandlerFunc {
 
 		c.Next()
 	}
-}
-
-// MobileRateLimit creates a rate limiting middleware specifically for mobile APIs
-func MobileRateLimit() gin.HandlerFunc {
-	return RateLimiter(MobileRateLimitConfig)
 }
 
 // StrictRateLimit creates a strict rate limiting middleware for sensitive operations

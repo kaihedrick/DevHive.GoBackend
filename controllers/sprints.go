@@ -100,15 +100,15 @@ func CreateSprint(c *gin.Context) {
 		return
 	}
 
-	// Check if user has admin/owner access to the project
-	userRole, err := models.GetProjectMemberRole(db.GetDB(), projectID, userID)
+	// Check if user is the owner of the project
+	isOwner, err := models.IsProjectOwner(db.GetDB(), projectID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 
-	if userRole != "admin" && userRole != "owner" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to create sprints"})
+	if !isOwner {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only project owner can create sprints"})
 		return
 	}
 
@@ -215,15 +215,15 @@ func UpdateSprint(c *gin.Context) {
 		return
 	}
 
-	// Check if user has admin/owner access to the project
-	userRole, err := models.GetProjectMemberRole(db.GetDB(), projectID, userID)
+	// Check if user is the owner of the project
+	isOwner, err := models.IsProjectOwner(db.GetDB(), projectID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 
-	if userRole != "admin" && userRole != "owner" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to update sprints"})
+	if !isOwner {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only project owner can update sprints"})
 		return
 	}
 
@@ -290,15 +290,15 @@ func DeleteSprint(c *gin.Context) {
 		return
 	}
 
-	// Check if user has admin/owner access to the project
-	userRole, err := models.GetProjectMemberRole(db.GetDB(), projectID, userID)
+	// Check if user is the owner of the project
+	isOwner, err := models.IsProjectOwner(db.GetDB(), projectID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 
-	if userRole != "admin" && userRole != "owner" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to delete sprints"})
+	if !isOwner {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only project owner can delete sprints"})
 		return
 	}
 

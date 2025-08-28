@@ -12,6 +12,18 @@ import (
 )
 
 // GetProjects retrieves all projects for the current user
+// @Summary Get user projects
+// @Description Retrieve all projects for the authenticated user with pagination
+// @Tags projects
+// @Accept json
+// @Produce json
+// @Param limit query int false "Number of projects to return (max 100)" default(20)
+// @Param offset query int false "Number of projects to skip" default(0)
+// @Security BearerAuth
+// @Success 200 {object} map[string]interface{} "Projects with pagination info"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /projects [get]
 func GetProjects(c *gin.Context) {
 	userID := GetCurrentUserID(c)
 	if userID == uuid.Nil {
@@ -65,6 +77,18 @@ func GetProjects(c *gin.Context) {
 }
 
 // CreateProject creates a new project
+// @Summary Create a new project
+// @Description Create a new project for the authenticated user
+// @Tags projects
+// @Accept json
+// @Produce json
+// @Param project body models.ProjectCreateRequest true "Project creation request"
+// @Security BearerAuth
+// @Success 201 {object} map[string]interface{} "Project created successfully"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /projects [post]
 func CreateProject(c *gin.Context) {
 	userID := GetCurrentUserID(c)
 	if userID == uuid.Nil {
@@ -92,6 +116,20 @@ func CreateProject(c *gin.Context) {
 }
 
 // GetProject retrieves a specific project
+// @Summary Get a specific project
+// @Description Retrieve a specific project by ID for the authenticated user
+// @Tags projects
+// @Accept json
+// @Produce json
+// @Param id path string true "Project ID" format(uuid)
+// @Security BearerAuth
+// @Success 200 {object} models.Project "Project details"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 403 {object} map[string]string "Forbidden - User not a member"
+// @Failure 404 {object} map[string]string "Project not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /projects/{id} [get]
 func GetProject(c *gin.Context) {
 	userID := GetCurrentUserID(c)
 	if userID == uuid.Nil {
@@ -159,15 +197,15 @@ func UpdateProject(c *gin.Context) {
 		return
 	}
 
-	// Check if user has admin/owner access to the project
-	userRole, err := models.GetProjectMemberRole(db.GetDB(), projectID, userID)
+	// Check if user is the owner of the project
+	isOwner, err := models.IsProjectOwner(db.GetDB(), projectID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 
-	if userRole != "admin" && userRole != "owner" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to update project"})
+	if !isOwner {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only project owner can update the project"})
 		return
 	}
 
@@ -207,13 +245,13 @@ func DeleteProject(c *gin.Context) {
 	}
 
 	// Check if user is the owner of the project
-	userRole, err := models.GetProjectMemberRole(db.GetDB(), projectID, userID)
+	isOwner, err := models.IsProjectOwner(db.GetDB(), projectID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 
-	if userRole != "owner" {
+	if !isOwner {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Only project owner can delete the project"})
 		return
 	}
@@ -246,15 +284,15 @@ func AddProjectMember(c *gin.Context) {
 		return
 	}
 
-	// Check if user has admin/owner access to the project
-	userRole, err := models.GetProjectMemberRole(db.GetDB(), projectID, userID)
+	// Check if user is the owner of the project
+	isOwner, err := models.IsProjectOwner(db.GetDB(), projectID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 
-	if userRole != "admin" && userRole != "owner" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to add members"})
+	if !isOwner {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only project owner can add members"})
 		return
 	}
 
@@ -272,7 +310,7 @@ func AddProjectMember(c *gin.Context) {
 	}
 
 	// Add member to project
-	err = models.AddProjectMember(db.GetDB(), projectID, req.UserID, req.Role)
+	err = models.AddProjectMember(db.GetDB(), projectID, req.UserID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add member to project"})
 		return
@@ -281,7 +319,6 @@ func AddProjectMember(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Member added successfully",
 		"user":    userToAdd,
-		"role":    req.Role,
 	})
 }
 
@@ -309,30 +346,22 @@ func RemoveProjectMember(c *gin.Context) {
 		return
 	}
 
-	// Check if user has admin/owner access to the project
-	userRole, err := models.GetProjectMemberRole(db.GetDB(), projectID, userID)
+	// Check if user is the owner of the project
+	isOwner, err := models.IsProjectOwner(db.GetDB(), projectID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 
-	if userRole != "admin" && userRole != "owner" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to remove members"})
+	if !isOwner {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only project owner can remove members"})
 		return
 	}
 
 	// Check if trying to remove the owner
-	if userRole != "owner" {
-		memberToRemoveRole, err := models.GetProjectMemberRole(db.GetDB(), projectID, userToRemoveID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-			return
-		}
-
-		if memberToRemoveRole == "owner" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot remove project owner"})
-			return
-		}
+	if userToRemoveID == userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Cannot remove project owner"})
+		return
 	}
 
 	// Remove member from project

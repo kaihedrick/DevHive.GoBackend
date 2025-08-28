@@ -15,10 +15,34 @@ import (
 	"devhive-backend/internal/middleware"
 	"devhive-backend/internal/ws"
 
+	_ "devhive-backend/docs" // This will be generated
+
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/cors"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
+
+// @title           DevHive Backend API
+// @version         1.0
+// @description     A comprehensive project management backend API for DevHive
+// @termsOfService  http://swagger.io/terms/
+
+// @contact.name   DevHive Team
+// @contact.url    http://www.swagger.io/support
+// @contact.email  support@swagger.io
+
+// @license.name  Apache 2.0
+// @license.url   http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host      localhost:8080
+// @BasePath  /api/v1
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
 
 func main() {
 	if err := config.LoadEnv(); err != nil {
@@ -33,8 +57,6 @@ func main() {
 	if err := config.InitFirebase(); err != nil {
 		log.Fatal("Error initializing Firebase:", err)
 	}
-
-	log.Println("Feature flags initialization skipped during startup")
 
 	ws.StartWebSocketHub()
 
@@ -71,6 +93,11 @@ func main() {
 		})
 	})
 
+	// Redirect root to Swagger documentation
+	router.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, "/swagger/")
+	})
+
 	router.GET("/ws", gin.WrapF(func(w http.ResponseWriter, r *http.Request) {
 		ws.HandleConnections(ws.GlobalHub, w, r)
 	}))
@@ -78,6 +105,9 @@ func main() {
 	router.GET("/ws/auth", gin.WrapF(func(w http.ResponseWriter, r *http.Request) {
 		ws.AuthenticatedHandleConnections(ws.GlobalHub, w, r)
 	}))
+
+	// Swagger documentation route
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	api := router.Group("/api/v1")
 	{
@@ -118,6 +148,15 @@ func main() {
 				sprints.DELETE(":sprintId", controllers.DeleteSprint)
 			}
 
+			tasks := protected.Group("/projects/:projectId/sprints/:sprintId/tasks")
+			{
+				tasks.GET("/", controllers.GetTasks)
+				tasks.POST("/", controllers.CreateTask)
+				tasks.GET(":id", controllers.GetTask)
+				tasks.PUT(":id", controllers.UpdateTask)
+				tasks.DELETE(":id", controllers.DeleteTask)
+			}
+
 			messages := protected.Group("/projects/:id/messages")
 			{
 				messages.GET("/", controllers.GetMessages)
@@ -126,24 +165,6 @@ func main() {
 				messages.DELETE(":messageId", controllers.DeleteMessage)
 			}
 
-			featureFlags := protected.Group("/admin/feature-flags")
-			{
-				featureFlags.GET("/", controllers.GetFeatureFlags)
-				featureFlags.GET(":key", controllers.GetFeatureFlag)
-				featureFlags.POST("/", controllers.CreateFeatureFlag)
-				featureFlags.PUT(":key", controllers.UpdateFeatureFlag)
-				featureFlags.DELETE(":key", controllers.DeleteFeatureFlag)
-				featureFlags.POST("/bulk-update", controllers.BulkUpdateFeatureFlags)
-			}
-
-			mobile := protected.Group("/mobile/v2")
-			{
-				mobile.Use(middleware.MobileRateLimit())
-				mobile.GET("/projects", controllers.GetMobileProjects)
-				mobile.GET("/projects/:id", controllers.GetMobileProject)
-				mobile.GET("/projects/:id/sprints", controllers.GetMobileSprints)
-				mobile.GET("/projects/:id/messages", controllers.GetMobileMessages)
-			}
 		}
 	}
 

@@ -30,15 +30,12 @@ primary_region = "iad"
     grace_period = "5s"
     method = "GET"
     path = "/health"
-    [http_service.checks.headers]
-      Host = "go.devhive.it.com"
 
 [[domains]]
   name = "go.devhive.it.com"
 
 [deploy]
   strategy = "immediate"
-  # release_command intentionally removed to avoid hanging
 
 [metrics]
   port = 9091
