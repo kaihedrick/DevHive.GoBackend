@@ -15,8 +15,18 @@ var DB *sql.DB
 
 // InitDB initializes the PostgreSQL database connection
 func InitDB() error {
-	// First try to use the Fly.io connection string
-	dbURL := os.Getenv("ConnectionStringsDbConnection")
+	// First try to use the Fly.io DATABASE_URL (standard format)
+	dbURL := os.Getenv("DATABASE_URL")
+
+	// Fallback to Fly.io connection string (with double underscores)
+	if dbURL == "" {
+		dbURL = os.Getenv("ConnectionStrings__DbConnection")
+	}
+
+	// Fallback to single underscore version
+	if dbURL == "" {
+		dbURL = os.Getenv("ConnectionStringsDbConnection")
+	}
 
 	// Fallback to individual environment variables if connection string not available
 	if dbURL == "" {

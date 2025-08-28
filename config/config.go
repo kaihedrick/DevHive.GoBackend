@@ -40,12 +40,12 @@ func LoadEnv() error {
 		DBPassword:    getEnv("DB_PASSWORD", ""),
 		DBName:        getEnv("DB_NAME", "devhive"),
 		DBSSLMode:     getEnv("DB_SSLMODE", "disable"),
-		JWTSecret:     getEnv("JwtKey", getEnv("JWT_SECRET", "your-secret-key")),
-		JWTIssuer:     getEnv("JwtIssuer", "devhive-backend"),
-		JWTAudience:   getEnv("JwtAudience", "devhive-users"),
+		JWTSecret:     getEnv("Jwt__Key", getEnv("JwtKey", getEnv("JWT_SECRET", "your-secret-key"))),
+		JWTIssuer:     getEnv("Jwt__Issuer", getEnv("JwtIssuer", "devhive-backend")),
+		JWTAudience:   getEnv("Jwt__Audience", getEnv("JwtAudience", "devhive-users")),
 		Port:          getEnv("PORT", "8080"),
-		MailgunAPIKey: getEnv("MailgunApiKey", ""),
-		MailgunDomain: getEnv("MailgunDomain", ""),
+		MailgunAPIKey: getEnv("Mailgun__ApiKey", getEnv("MailgunApiKey", "")),
+		MailgunDomain: getEnv("Mailgun__Domain", getEnv("MailgunDomain", "")),
 		MailgunSender: getEnv("Mailgun__SenderEmail", ""),
 	}
 

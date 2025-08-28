@@ -1,18 +1,9 @@
-app = "devhive-backend"
-primary_region = "dfw"
+app = "devhive-go-backend"
+primary_region = "iad"
 
 [env]
   PORT = "8080"
   GIN_MODE = "release"
-  DB_HOST = "your-postgres-host"
-  DB_PORT = "5432"
-  DB_USER = "your-postgres-user"
-  DB_PASSWORD = "your-postgres-password"
-  DB_NAME = "devhive"
-  DB_SSLMODE = "require"
-  JWT_SECRET = "your-super-secret-jwt-key-change-in-production"
-  FIREBASE_SERVICE_ACCOUNT_KEY_PATH = "/secrets/firebase.json"
-  FIREBASE_STORAGE_BUCKET = "your-firebase-storage-bucket"
 
 [http_service]
   internal_port = 8080
@@ -40,21 +31,14 @@ primary_region = "dfw"
     method = "GET"
     path = "/health"
     [http_service.checks.headers]
-      Host = "api.devhive.it.com"
-
-[[mounts]]
-  source = "devhive_data"
-  destination = "/app/static"
+      Host = "go.devhive.it.com"
 
 [[domains]]
-  name = "api.devhive.it.com"
-
-[processes]
-  app = "./devhive"
+  name = "go.devhive.it.com"
 
 [deploy]
   strategy = "immediate"
-  release_command = "echo 'Deployment completed'"
+  # release_command intentionally removed to avoid hanging
 
 [metrics]
   port = 9091

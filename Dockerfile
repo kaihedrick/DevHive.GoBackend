@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -29,14 +29,11 @@ WORKDIR /app
 # Copy the built Go binary
 COPY --from=builder /app/devhive .
 
-# Copy static assets
-COPY --from=builder /app/static ./static
-
 # Copy DB schema (optional)
 COPY --from=builder /app/db/schema.sql ./db/schema.sql
 
 # Ensure required folders exist
-RUN mkdir -p /app/static/avatars /app/static/uploads \
+RUN mkdir -p /app/db \
   && chown -R appuser:appgroup /app
 
 USER appuser
