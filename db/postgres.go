@@ -5,15 +5,18 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"devhive-backend/config"
 
-	_ "github.com/lib/pq"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-var DB *sql.DB
+var DB *gorm.DB
 
-// InitDB initializes the PostgreSQL database connection
+// InitDB initializes the PostgreSQL database connection using GORM
 func InitDB() error {
 	// First try to use the Fly.io DATABASE_URL (standard format)
 	dbURL := os.Getenv("DATABASE_URL")
@@ -33,26 +36,45 @@ func InitDB() error {
 		dbURL = config.GetDatabaseURL()
 	}
 
+	// Configure GORM logger
+	gormLogger := logger.Default.LogMode(logger.Info)
+	if os.Getenv("ENV") == "production" {
+		gormLogger = logger.Default.LogMode(logger.Error)
+	}
+
+	// Open database with GORM
 	var err error
-	DB, err = sql.Open("postgres", dbURL)
+	DB, err = gorm.Open(postgres.Open(dbURL), &gorm.Config{
+		Logger: gormLogger,
+		NowFunc: func() time.Time {
+			return time.Now().UTC()
+		},
+	})
 	if err != nil {
 		return fmt.Errorf("error opening database: %v", err)
 	}
 
-	// Test the connection
-	if err := DB.Ping(); err != nil {
-		return fmt.Errorf("error connecting to database: %v", err)
+	// Get the underlying sql.DB for connection pool settings
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return fmt.Errorf("error getting underlying sql.DB: %v", err)
 	}
 
 	// Set connection pool settings
-	DB.SetMaxOpenConns(25)
-	DB.SetMaxIdleConns(25)
+	sqlDB.SetMaxOpenConns(25)
+	sqlDB.SetMaxIdleConns(25)
+	sqlDB.SetConnMaxLifetime(time.Hour)
 
-	log.Println("Database connected successfully")
+	// Test the connection
+	if err := sqlDB.Ping(); err != nil {
+		return fmt.Errorf("error connecting to database: %v", err)
+	}
 
-	// Run migrations if they exist
-	if err := runMigrations(); err != nil {
-		log.Printf("Warning: Error running migrations: %v", err)
+	log.Println("Database connected successfully with GORM")
+
+	// Run GORM migrations
+	if err := runGORMMigrations(); err != nil {
+		log.Printf("Warning: Error running GORM migrations: %v", err)
 	}
 
 	return nil
@@ -61,41 +83,48 @@ func InitDB() error {
 // CloseDB closes the database connection
 func CloseDB() {
 	if DB != nil {
-		DB.Close()
+		sqlDB, err := DB.DB()
+		if err != nil {
+			log.Printf("Error getting underlying sql.DB: %v", err)
+			return
+		}
+		sqlDB.Close()
 		log.Println("Database connection closed")
 	}
 }
 
-// runMigrations runs the database schema migrations
-func runMigrations() error {
-	// Check if migrations directory exists
-	if _, err := os.Stat("migrations"); os.IsNotExist(err) {
-		log.Println("Migrations directory not found, skipping migrations")
-		return nil
+// runGORMMigrations runs the database schema migrations using GORM
+func runGORMMigrations() error {
+	log.Println("Running GORM migrations...")
+
+	// Run auto-migrations
+	if err := AutoMigrate(DB); err != nil {
+		return fmt.Errorf("error running auto-migrations: %v", err)
 	}
 
-	// Read and execute schema.sql
-	schemaPath := "db/schema.sql"
-	if _, err := os.Stat(schemaPath); os.IsNotExist(err) {
-		log.Println("Schema file not found, skipping schema creation")
-		return nil
+	// Create indexes for performance
+	if err := CreateIndexes(DB); err != nil {
+		log.Printf("Warning: Error creating indexes: %v", err)
 	}
 
-	schemaBytes, err := os.ReadFile(schemaPath)
-	if err != nil {
-		return fmt.Errorf("error reading schema file: %v", err)
+	// Seed initial data if needed
+	if err := SeedData(DB); err != nil {
+		log.Printf("Warning: Error seeding data: %v", err)
 	}
 
-	// Execute the schema
-	if _, err := DB.Exec(string(schemaBytes)); err != nil {
-		return fmt.Errorf("error executing schema: %v", err)
-	}
-
-	log.Println("Database schema created successfully")
+	log.Println("GORM migrations completed successfully")
 	return nil
 }
 
-// GetDB returns the database instance
-func GetDB() *sql.DB {
+// GetDB returns the GORM database instance
+func GetDB() *gorm.DB {
 	return DB
+}
+
+// GetRawDB returns the underlying sql.DB instance (useful for raw SQL queries)
+func GetRawDB() (*sql.DB, error) {
+	if DB == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+	return DB.DB()
 }

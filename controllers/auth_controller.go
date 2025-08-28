@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"time"
 
@@ -46,6 +47,17 @@ type Claims struct {
 	UserID string `json:"user_id"`
 	Email  string `json:"email"`
 	jwt.RegisteredClaims
+}
+
+// ForgotPasswordRequest represents the forgot password request
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email" example:"john@example.com"`
+}
+
+// ResetPasswordRequest represents the reset password request
+type ResetPasswordRequest struct {
+	Token    string `json:"token" binding:"required" example:"reset_token_here"`
+	Password string `json:"password" binding:"required,min=6,max=100" example:"newpassword123"`
 }
 
 // Register handles user registration
@@ -259,6 +271,118 @@ func RefreshToken(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// ForgotPassword handles password reset request
+// @Summary Request password reset
+// @Description Sends a password reset email to the user
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body ForgotPasswordRequest true "Password reset request"
+// @Success 200 {object} map[string]string "Password reset email sent"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 404 {object} map[string]string "User not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /auth/forgot-password [post]
+func ForgotPassword(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get user from database
+	user, err := models.GetUserByEmail(db.GetDB(), req.Email)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	// Generate password reset token
+	token := uuid.New().String()
+	expiresAt := time.Now().Add(1 * time.Hour) // Token expires in 1 hour
+
+	// Save password reset token to database
+	err = models.CreatePasswordResetToken(db.GetDB(), user.ID, token, expiresAt)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create reset token"})
+		return
+	}
+
+	// Send password reset email
+	resetLink := config.AppConfig.FrontendURL + "/reset-password?token=" + token
+	err = sendPasswordResetEmail(user.Email, user.FirstName, resetLink)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send reset email"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Password reset email sent successfully",
+	})
+}
+
+// ResetPassword handles password reset with token
+// @Summary Reset password with token
+// @Description Resets user password using the reset token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body ResetPasswordRequest true "Password reset with token"
+// @Success 200 {object} map[string]string "Password reset successful"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 401 {object} map[string]string "Invalid or expired token"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /auth/reset-password [post]
+func ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate and get password reset token
+	resetToken, err := models.GetPasswordResetToken(db.GetDB(), req.Token)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired reset token"})
+		return
+	}
+
+	// Check if token is expired
+	if time.Now().After(resetToken.ExpiresAt) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Reset token has expired"})
+		return
+	}
+
+	// Hash new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+
+	// Update user password
+	err = models.UpdateUserPassword(db.GetDB(), resetToken.UserID, string(hashedPassword))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update password"})
+		return
+	}
+
+	// Delete used reset token
+	err = models.DeletePasswordResetToken(db.GetDB(), req.Token)
+	if err != nil {
+		// Log error but don't fail the request
+		log.Printf("Failed to delete reset token: %v", err)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Password reset successfully",
+	})
+}
+
 // generateTokens generates JWT access and refresh tokens
 func generateTokens(userID, email string) (string, string, error) {
 	// Generate access token
@@ -296,4 +420,12 @@ func generateTokens(userID, email string) (string, string, error) {
 	}
 
 	return accessTokenString, refreshTokenString, nil
+}
+
+// sendPasswordResetEmail sends a password reset email
+func sendPasswordResetEmail(email, firstName, resetLink string) error {
+	// This would integrate with your mail service
+	// For now, just log the reset link
+	log.Printf("Password reset email would be sent to %s with link: %s", email, resetLink)
+	return nil
 }

@@ -1,13 +1,14 @@
-package service
+package services
 
 import (
 	"context"
-	"database/sql"
+	"fmt"
 
-	"devhive-backend/internal/ws"
+	ws "devhive-backend/internal"
 	"devhive-backend/models"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // SprintService defines the interface for sprint operations
@@ -21,15 +22,17 @@ type SprintService interface {
 	CompleteSprint(ctx context.Context, sprintID uuid.UUID, userID uuid.UUID) error
 	GetActiveSprint(ctx context.Context, projectID uuid.UUID) (*models.Sprint, error)
 	GetUpcomingSprints(ctx context.Context, projectID uuid.UUID) ([]*models.Sprint, error)
+	// Mobile-specific methods
+	GetSprintsForMobile(projectID uuid.UUID, userID string, page, limit int, status string) ([]models.MobileSprint, int, error)
 }
 
 // sprintService implements SprintService
 type sprintService struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 // NewSprintService creates a new sprint service instance
-func NewSprintService(db *sql.DB) SprintService {
+func NewSprintService(db *gorm.DB) SprintService {
 	return &sprintService{
 		db: db,
 	}
@@ -125,7 +128,7 @@ func (s *sprintService) DeleteSprint(ctx context.Context, sprintID uuid.UUID, us
 
 	// Broadcast the sprint deletion to all project members
 	ws.BroadcastSprintUpdate(sprint.ProjectID.String(), map[string]interface{}{
-		"action": "deleted",
+		"action":    "deleted",
 		"sprint_id": sprintID.String(),
 	})
 
@@ -222,4 +225,76 @@ func (s *sprintService) GetActiveSprint(ctx context.Context, projectID uuid.UUID
 // GetUpcomingSprints retrieves upcoming sprints for a project
 func (s *sprintService) GetUpcomingSprints(ctx context.Context, projectID uuid.UUID) ([]*models.Sprint, error) {
 	return models.GetUpcomingSprints(s.db, projectID)
+}
+
+// GetSprintsForMobile retrieves sprints optimized for mobile consumption
+func (s *sprintService) GetSprintsForMobile(projectID uuid.UUID, userID string, page, limit int, status string) ([]models.MobileSprint, int, error) {
+	// Parse user ID
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	// Check if user is a member of the project
+	isMember, err := models.IsProjectMember(s.db, projectID, userUUID)
+	if err != nil || !isMember {
+		return nil, 0, fmt.Errorf("access denied")
+	}
+
+	// Get all sprints for the project
+	sprints, err := models.GetSprints(s.db, projectID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("error getting sprints: %w", err)
+	}
+
+	// Convert to mobile sprints and apply filters
+	mobileSprints := make([]models.MobileSprint, 0, len(sprints))
+	for _, sprint := range sprints {
+		// Apply status filter if provided
+		if status != "" && sprint.Status != status {
+			continue
+		}
+
+		// Get task count for this sprint
+		taskCount := 0
+		completedTaskCount := 0
+		// TODO: Implement task counting when task service is available
+
+		// Calculate progress
+		progress := 0.0
+		if taskCount > 0 {
+			progress = float64(completedTaskCount) / float64(taskCount) * 100
+		}
+
+		mobileSprint := models.MobileSprint{
+			ID:                 sprint.ID,
+			Name:               sprint.Name,
+			Description:        sprint.Description,
+			Status:             sprint.Status,
+			StartDate:          sprint.StartDate,
+			EndDate:            sprint.EndDate,
+			CreatedAt:          sprint.CreatedAt,
+			UpdatedAt:          sprint.UpdatedAt,
+			TaskCount:          taskCount,
+			CompletedTaskCount: completedTaskCount,
+			Progress:           progress,
+		}
+
+		mobileSprints = append(mobileSprints, mobileSprint)
+	}
+
+	// Apply pagination
+	total := len(mobileSprints)
+	start := (page - 1) * limit
+	end := start + limit
+
+	if start >= total {
+		return []models.MobileSprint{}, total, nil
+	}
+
+	if end > total {
+		end = total
+	}
+
+	return mobileSprints[start:end], total, nil
 }

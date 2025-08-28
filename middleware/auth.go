@@ -1,4 +1,4 @@
-package controllers
+package middleware
 
 import (
 	"net/http"
@@ -12,6 +12,12 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
+
+// Claims represents the JWT claims
+type Claims struct {
+	UserID string `json:"user_id"`
+	jwt.RegisteredClaims
+}
 
 // AuthMiddleware creates a middleware for JWT authentication
 func AuthMiddleware() gin.HandlerFunc {

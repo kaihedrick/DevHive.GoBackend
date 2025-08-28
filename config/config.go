@@ -22,6 +22,7 @@ type Config struct {
 	MailgunAPIKey string
 	MailgunDomain string
 	MailgunSender string
+	FrontendURL   string
 }
 
 // Global config instance
@@ -47,6 +48,7 @@ func LoadEnv() error {
 		MailgunAPIKey: getEnv("Mailgun__ApiKey", getEnv("MailgunApiKey", "")),
 		MailgunDomain: getEnv("Mailgun__Domain", getEnv("MailgunDomain", "")),
 		MailgunSender: getEnv("Mailgun__SenderEmail", ""),
+		FrontendURL:   getEnv("FRONTEND_URL", "http://localhost:3000"),
 	}
 
 	return nil

@@ -1,0 +1,71 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Documentation
+*.md
+docs/
+
+# Test files
+*_test.go
+test.txt
+
+# Temporary files
+tmp/
+temp/
+
+# Database files
+*.db
+*.sqlite
+
+# Coverage reports
+coverage.out
+coverage.html
+
+# Go workspace files
+go.work
+
+# Fly.io deployment files
+fly.toml
+FLY_IO_DEPLOYMENT.md
+
+# Strategic planning files
+STRATEGIC_FEATURES.md
+MVP_ENHANCEMENTS.md
+MAIL_FUNCTIONALITY.md
+SECURITY.md
+SWAGGER_SETUP.md

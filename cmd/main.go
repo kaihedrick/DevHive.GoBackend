@@ -12,8 +12,10 @@ import (
 	"devhive-backend/config"
 	"devhive-backend/controllers"
 	"devhive-backend/db"
-	"devhive-backend/internal/middleware"
-	"devhive-backend/internal/ws"
+	ws "devhive-backend/internal"
+	"devhive-backend/middleware"
+	"devhive-backend/repositories"
+	"devhive-backend/services"
 
 	_ "devhive-backend/docs" // This will be generated
 
@@ -59,6 +61,27 @@ func main() {
 	}
 
 	ws.StartWebSocketHub()
+
+	// Initialize database controller
+	dbController := controllers.NewDatabaseController("scripts")
+
+	// Initialize mail controller
+	mailService := services.NewMailService()
+	mailController := controllers.NewMailController(mailService)
+
+	// Initialize services for mobile controller
+	rawDB, err := db.GetRawDB()
+	if err != nil {
+		log.Fatal("Error getting raw database connection:", err)
+	}
+
+	projectService := services.NewProjectService(repositories.NewProjectRepository(rawDB), repositories.NewUserRepository(rawDB))
+	sprintService := services.NewSprintService(db.GetDB())
+	messageService := services.NewMessageService(repositories.NewMessageRepository(db.GetDB()))
+	userService := services.NewUserService(repositories.NewUserRepository(rawDB))
+
+	// Initialize mobile controller
+	mobileController := controllers.NewMobileController(projectService, sprintService, messageService, userService)
 
 	if os.Getenv("GIN_MODE") == "" {
 		gin.SetMode(gin.ReleaseMode)
@@ -116,16 +139,21 @@ func main() {
 			auth.POST("/register", controllers.Register)
 			auth.POST("/login", controllers.Login)
 			auth.POST("/refresh", controllers.RefreshToken)
+			auth.POST("/forgot-password", controllers.ForgotPassword)
+			auth.POST("/reset-password", controllers.ResetPassword)
 		}
 
 		protected := api.Group("/")
-		protected.Use(controllers.AuthMiddleware())
+		protected.Use(middleware.AuthMiddleware())
 		{
 			users := protected.Group("/users")
 			{
 				users.GET("/profile", controllers.GetUserProfile)
 				users.PUT("/profile", controllers.UpdateUserProfile)
 				users.POST("/avatar", controllers.UploadAvatar)
+				users.PUT("/activate/:id", controllers.ActivateUser)
+				users.PUT("/deactivate/:id", controllers.DeactivateUser)
+				users.GET("/search", controllers.SearchUsers)
 			}
 
 			projects := protected.Group("/projects")
@@ -136,7 +164,9 @@ func main() {
 				projects.PUT(":id", controllers.UpdateProject)
 				projects.DELETE(":id", controllers.DeleteProject)
 				projects.POST(":id/members", controllers.AddProjectMember)
+				projects.GET(":id/members", controllers.GetProjectMembers)
 				projects.DELETE(":id/members/:userId", controllers.RemoveProjectMember)
+				projects.PUT(":id/members/:userId/role", controllers.UpdateProjectMemberRole)
 			}
 
 			sprints := protected.Group("/projects/:id/sprints")
@@ -146,23 +176,73 @@ func main() {
 				sprints.GET(":sprintId", controllers.GetSprint)
 				sprints.PUT(":sprintId", controllers.UpdateSprint)
 				sprints.DELETE(":sprintId", controllers.DeleteSprint)
+				sprints.POST(":sprintId/start", controllers.StartSprint)
+				sprints.POST(":sprintId/complete", controllers.CompleteSprint)
 			}
 
-			tasks := protected.Group("/projects/:projectId/sprints/:sprintId/tasks")
+			// Project-level task management
+			projectTasks := protected.Group("/projects/:id/tasks")
 			{
-				tasks.GET("/", controllers.GetTasks)
+				projectTasks.GET("/", controllers.GetTasks)
+				projectTasks.POST("/", controllers.CreateTask)
+				projectTasks.GET("/:taskId", controllers.GetTask)
+				projectTasks.PUT("/:taskId", controllers.UpdateTask)
+				projectTasks.DELETE("/:taskId", controllers.DeleteTask)
+				projectTasks.POST("/:taskId/assign", controllers.AssignTask)
+				projectTasks.PATCH("/:taskId/status", controllers.UpdateTaskStatus)
+			}
+
+			// Sprint-level task management
+			tasks := protected.Group("/projects/:id/sprints/:sprintId/tasks")
+			{
+				tasks.GET("/", controllers.GetTasksBySprint)
 				tasks.POST("/", controllers.CreateTask)
-				tasks.GET(":id", controllers.GetTask)
-				tasks.PUT(":id", controllers.UpdateTask)
-				tasks.DELETE(":id", controllers.DeleteTask)
+				tasks.GET("/:taskId", controllers.GetTask)
+				tasks.PUT("/:taskId", controllers.UpdateTask)
+				tasks.DELETE("/:taskId", controllers.DeleteTask)
+				tasks.POST("/:taskId/assign", controllers.AssignTask)
+				tasks.PATCH("/:taskId/status", controllers.UpdateTaskStatus)
 			}
 
 			messages := protected.Group("/projects/:id/messages")
 			{
 				messages.GET("/", controllers.GetMessages)
 				messages.POST("/", controllers.CreateMessage)
-				messages.PUT(":messageId", controllers.UpdateMessage)
-				messages.DELETE(":messageId", controllers.DeleteMessage)
+				messages.PUT("/:messageId", controllers.UpdateMessage)
+				messages.DELETE("/:messageId", controllers.DeleteMessage)
+			}
+
+			database := protected.Group("/database")
+			{
+				database.POST("/execute-script", dbController.ExecuteScript)
+				database.GET("/status", dbController.GetDatabaseStatus)
+				database.GET("/scripts", dbController.ListScripts)
+			}
+
+			mail := protected.Group("/mail")
+			{
+				mail.POST("/send", mailController.SendEmail)
+			}
+
+			admin := protected.Group("/admin")
+			{
+				featureFlags := admin.Group("/feature-flags")
+				{
+					featureFlags.GET("/", controllers.GetFeatureFlags)
+					featureFlags.GET("/:key", controllers.GetFeatureFlag)
+					featureFlags.POST("/", controllers.CreateFeatureFlag)
+					featureFlags.PUT("/:key", controllers.UpdateFeatureFlag)
+					featureFlags.DELETE("/:key", controllers.DeleteFeatureFlag)
+					featureFlags.POST("/bulk-update", controllers.BulkUpdateFeatureFlags)
+				}
+			}
+
+			mobile := protected.Group("/mobile/v2")
+			{
+				mobile.GET("/projects", mobileController.GetMobileProjects)
+				mobile.GET("/projects/:id", mobileController.GetMobileProject)
+				mobile.GET("/projects/:id/sprints", mobileController.GetMobileSprints)
+				mobile.GET("/projects/:id/messages", mobileController.GetMobileMessages)
 			}
 
 		}

@@ -1,278 +1,161 @@
 package models
 
 import (
-	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // Message represents a message in the system
+// @Description Message represents a message in the system
 type Message struct {
-	ID              uuid.UUID  `json:"id" db:"id"`
-	ProjectID       uuid.UUID  `json:"project_id" db:"project_id"`
-	SenderID        uuid.UUID  `json:"sender_id" db:"sender_id"`
-	Content         string     `json:"content" db:"content"`
-	MessageType     string     `json:"message_type" db:"message_type"`
-	ParentMessageID *uuid.UUID `json:"parent_message_id,omitempty" db:"parent_message_id"`
-	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at" db:"updated_at"`
+	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()" example:"123e4567-e89b-12d3-a456-426614174000"`
+	Content   string    `json:"content" gorm:"not null;size:1000" example:"Hello team! How's the project going?"`
+	ProjectID uuid.UUID `json:"project_id" gorm:"type:uuid;not null" example:"123e4567-e89b-12d3-a456-426614174000"`
+	SenderID  uuid.UUID `json:"sender_id" gorm:"type:uuid;not null" example:"123e4567-e89b-12d3-a456-426614174000"`
+	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 	// Additional fields for API responses
-	Sender  *User      `json:"sender,omitempty"`
-	Replies []*Message `json:"replies,omitempty"`
+	Project *Project `json:"project,omitempty" gorm:"foreignKey:ProjectID"`
+	Sender  *User    `json:"sender,omitempty" gorm:"foreignKey:SenderID"`
+}
+
+// TableName specifies the table name for the Message model
+func (Message) TableName() string {
+	return "messages"
 }
 
 // MessageCreateRequest represents the request to create a new message
+// @Description Request to create a new message
 type MessageCreateRequest struct {
-	Content         string     `json:"content" binding:"required,min=1,max=2000"`
-	MessageType     string     `json:"message_type" binding:"required,oneof=text file image system"`
-	ParentMessageID *uuid.UUID `json:"parent_message_id,omitempty"`
+	Content string `json:"content" binding:"required,min=1,max=1000" example:"Hello team! How's the project going?"`
 }
 
 // MessageUpdateRequest represents the request to update a message
+// @Description Request to update an existing message
 type MessageUpdateRequest struct {
-	Content string `json:"content" binding:"required,min=1,max=2000"`
+	Content string `json:"content" binding:"required,min=1,max=1000" example:"Updated message content"`
 }
 
-// CreateMessage creates a new message in the database
-func CreateMessage(db *sql.DB, req MessageCreateRequest, projectID, senderID uuid.UUID) (*Message, error) {
+// CreateMessage creates a new message in the database using GORM
+func CreateMessage(db *gorm.DB, req MessageCreateRequest, projectID, senderID uuid.UUID) (*Message, error) {
 	message := &Message{
-		ID:              uuid.New(),
-		ProjectID:       projectID,
-		SenderID:        senderID,
-		Content:         req.Content,
-		MessageType:     req.MessageType,
-		ParentMessageID: req.ParentMessageID,
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
+		ID:        uuid.New(),
+		Content:   req.Content,
+		ProjectID: projectID,
+		SenderID:  senderID,
 	}
 
-	query := `
-		INSERT INTO messages (id, project_id, sender_id, content, message_type, parent_message_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		RETURNING id, project_id, sender_id, content, message_type, parent_message_id, created_at, updated_at
-	`
-
-	err := db.QueryRow(
-		query,
-		message.ID, message.ProjectID, message.SenderID, message.Content,
-		message.MessageType, message.ParentMessageID, message.CreatedAt, message.UpdatedAt,
-	).Scan(
-		&message.ID, &message.ProjectID, &message.SenderID, &message.Content,
-		&message.MessageType, &message.ParentMessageID, &message.CreatedAt, &message.UpdatedAt,
-	)
-
-	if err != nil {
+	if err := db.Create(message).Error; err != nil {
 		return nil, err
 	}
 
 	return message, nil
 }
 
-// GetMessage retrieves a message by ID with sender information
-func GetMessage(db *sql.DB, messageID uuid.UUID) (*Message, error) {
-	message := &Message{}
-	query := `
-		SELECT m.id, m.project_id, m.sender_id, m.content, m.message_type, m.parent_message_id, m.created_at, m.updated_at
-		FROM messages m WHERE m.id = $1
-	`
-
-	err := db.QueryRow(query, messageID).Scan(
-		&message.ID, &message.ProjectID, &message.SenderID, &message.Content,
-		&message.MessageType, &message.ParentMessageID, &message.CreatedAt, &message.UpdatedAt,
-	)
-
-	if err != nil {
+// GetMessage retrieves a message by ID using GORM
+func GetMessage(db *gorm.DB, messageID uuid.UUID) (*Message, error) {
+	var message Message
+	if err := db.Preload("Project").Preload("Sender").
+		Where("id = ?", messageID).First(&message).Error; err != nil {
 		return nil, err
 	}
-
-	// Get sender information
-	sender, err := GetUserByID(db, message.SenderID)
-	if err != nil {
-		return nil, err
-	}
-	message.Sender = sender
-
-	return message, nil
+	return &message, nil
 }
 
-// GetMessages retrieves messages for a project with pagination
-func GetMessages(db *sql.DB, projectID uuid.UUID, limit, offset int) ([]*Message, error) {
-	query := `
-		SELECT m.id, m.project_id, m.sender_id, m.content, m.message_type, m.parent_message_id, m.created_at, m.updated_at
-		FROM messages m 
-		WHERE m.project_id = $1 AND m.parent_message_id IS NULL
-		ORDER BY m.created_at DESC
-		LIMIT $2 OFFSET $3
-	`
-
-	rows, err := db.Query(query, projectID, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
+// GetMessages retrieves all messages for a specific project using GORM
+func GetMessages(db *gorm.DB, projectID uuid.UUID, limit, offset int) ([]*Message, error) {
 	var messages []*Message
-	for rows.Next() {
-		message := &Message{}
-		err := rows.Scan(
-			&message.ID, &message.ProjectID, &message.SenderID, &message.Content,
-			&message.MessageType, &message.ParentMessageID, &message.CreatedAt, &message.UpdatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		// Get sender information
-		sender, err := GetUserByID(db, message.SenderID)
-		if err != nil {
-			return nil, err
-		}
-		message.Sender = sender
-
-		// Get replies
-		replies, err := GetMessageReplies(db, message.ID)
-		if err != nil {
-			return nil, err
-		}
-		message.Replies = replies
-
-		messages = append(messages, message)
+	if err := db.Where("project_id = ?", projectID).
+		Preload("Sender").
+		Order("created_at DESC").
+		Limit(limit).Offset(offset).
+		Find(&messages).Error; err != nil {
+		return nil, err
 	}
-
 	return messages, nil
 }
 
-// GetMessageReplies retrieves replies to a specific message
-func GetMessageReplies(db *sql.DB, parentMessageID uuid.UUID) ([]*Message, error) {
-	query := `
-		SELECT m.id, m.project_id, m.sender_id, m.content, m.message_type, m.parent_message_id, m.created_at, m.updated_at
-		FROM messages m 
-		WHERE m.parent_message_id = $1
-		ORDER BY m.created_at ASC
-	`
-
-	rows, err := db.Query(query, parentMessageID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var replies []*Message
-	for rows.Next() {
-		message := &Message{}
-		err := rows.Scan(
-			&message.ID, &message.ProjectID, &message.SenderID, &message.Content,
-			&message.MessageType, &message.ParentMessageID, &message.CreatedAt, &message.UpdatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		// Get sender information
-		sender, err := GetUserByID(db, message.SenderID)
-		if err != nil {
-			return nil, err
-		}
-		message.Sender = sender
-
-		replies = append(replies, message)
+// UpdateMessage updates an existing message using GORM
+func UpdateMessage(db *gorm.DB, messageID uuid.UUID, req MessageUpdateRequest) (*Message, error) {
+	updates := map[string]interface{}{
+		"content": req.Content,
 	}
 
-	return replies, nil
-}
-
-// UpdateMessage updates a message in the database
-func UpdateMessage(db *sql.DB, messageID uuid.UUID, req MessageUpdateRequest) (*Message, error) {
-	message, err := GetMessage(db, messageID)
-	if err != nil {
+	if err := db.Model(&Message{}).Where("id = ?", messageID).Updates(updates).Error; err != nil {
 		return nil, err
 	}
 
-	message.Content = req.Content
-	message.UpdatedAt = time.Now()
-
-	query := `
-		UPDATE messages 
-		SET content = $1, updated_at = $2
-		WHERE id = $3
-		RETURNING id, project_id, sender_id, content, message_type, parent_message_id, created_at, updated_at
-	`
-
-	err = db.QueryRow(
-		query,
-		message.Content, message.UpdatedAt, message.ID,
-	).Scan(
-		&message.ID, &message.ProjectID, &message.SenderID, &message.Content,
-		&message.MessageType, &message.ParentMessageID, &message.CreatedAt, &message.UpdatedAt,
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return message, nil
+	return GetMessage(db, messageID)
 }
 
-// DeleteMessage deletes a message from the database
-func DeleteMessage(db *sql.DB, messageID uuid.UUID) error {
-	// First delete all replies
-	_, err := db.Exec("DELETE FROM messages WHERE parent_message_id = $1", messageID)
-	if err != nil {
-		return err
-	}
-
-	// Then delete the main message
-	query := `DELETE FROM messages WHERE id = $1`
-	_, err = db.Exec(query, messageID)
-	return err
+// DeleteMessage deletes a message by ID using GORM
+func DeleteMessage(db *gorm.DB, messageID uuid.UUID) error {
+	return db.Where("id = ?", messageID).Delete(&Message{}).Error
 }
 
-// GetMessageCount retrieves the total count of messages for a project
-func GetMessageCount(db *sql.DB, projectID uuid.UUID) (int, error) {
-	var count int
-	query := `SELECT COUNT(*) FROM messages WHERE project_id = $1 AND parent_message_id IS NULL`
-	err := db.QueryRow(query, projectID).Scan(&count)
-	return count, err
-}
-
-// SearchMessages searches for messages in a project by content
-func SearchMessages(db *sql.DB, projectID uuid.UUID, searchTerm string, limit, offset int) ([]*Message, error) {
-	query := `
-		SELECT m.id, m.project_id, m.sender_id, m.content, m.message_type, m.parent_message_id, m.created_at, m.updated_at
-		FROM messages m 
-		WHERE m.project_id = $1 AND m.content ILIKE $2
-		ORDER BY m.created_at DESC
-		LIMIT $3 OFFSET $4
-	`
-
-	searchPattern := "%" + searchTerm + "%"
-	rows, err := db.Query(query, projectID, searchPattern, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
+// GetMessagesBySender retrieves messages sent by a specific user using GORM
+func GetMessagesBySender(db *gorm.DB, senderID uuid.UUID, limit, offset int) ([]*Message, error) {
 	var messages []*Message
-	for rows.Next() {
-		message := &Message{}
-		err := rows.Scan(
-			&message.ID, &message.ProjectID, &message.SenderID, &message.Content,
-			&message.MessageType, &message.ParentMessageID, &message.CreatedAt, &message.UpdatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		// Get sender information
-		sender, err := GetUserByID(db, message.SenderID)
-		if err != nil {
-			return nil, err
-		}
-		message.Sender = sender
-
-		messages = append(messages, message)
+	if err := db.Where("sender_id = ?", senderID).
+		Preload("Project").
+		Order("created_at DESC").
+		Limit(limit).Offset(offset).
+		Find(&messages).Error; err != nil {
+		return nil, err
 	}
-
 	return messages, nil
+}
+
+// GetRecentMessages retrieves recent messages for a project using GORM
+func GetRecentMessages(db *gorm.DB, projectID uuid.UUID, hours int) ([]*Message, error) {
+	var messages []*Message
+	since := time.Now().Add(-time.Duration(hours) * time.Hour)
+
+	if err := db.Where("project_id = ? AND created_at > ?", projectID, since).
+		Preload("Sender").
+		Order("created_at DESC").
+		Find(&messages).Error; err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
+// CountMessages counts the total number of messages for a project
+func CountMessages(db *gorm.DB, projectID uuid.UUID) (int64, error) {
+	var count int64
+	if err := db.Model(&Message{}).Where("project_id = ?", projectID).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// SearchMessages searches messages by content in a project using GORM
+func SearchMessages(db *gorm.DB, projectID uuid.UUID, query string, limit, offset int) ([]*Message, error) {
+	var messages []*Message
+	searchQuery := "%" + query + "%"
+
+	if err := db.Where("project_id = ? AND content ILIKE ?", projectID, searchQuery).
+		Preload("Sender").
+		Order("created_at DESC").
+		Limit(limit).Offset(offset).
+		Find(&messages).Error; err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
+// BeforeCreate is a GORM hook that runs before creating a message
+func (m *Message) BeforeCreate(tx *gorm.DB) error {
+	if m.ID == uuid.Nil {
+		m.ID = uuid.New()
+	}
+	return nil
+}
+
+// BeforeUpdate is a GORM hook that runs before updating a message
+func (m *Message) BeforeUpdate(tx *gorm.DB) error {
+	m.UpdatedAt = time.Now()
+	return nil
 }

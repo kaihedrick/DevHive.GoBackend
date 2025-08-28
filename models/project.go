@@ -1,22 +1,30 @@
 package models
 
 import (
-	"database/sql"
+	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // Project represents a project in the system
 // @Description Project represents a project in the system
 type Project struct {
-	ID             uuid.UUID `json:"id" db:"id" example:"123e4567-e89b-12d3-a456-426614174000"`
-	Name           string    `json:"name" db:"name" example:"My Project"`
-	Description    string    `json:"description" db:"description" example:"A description of my project"`
-	ProjectOwnerID uuid.UUID `json:"project_owner_id" db:"project_owner_id" example:"123e4567-e89b-12d3-a456-426614174000"`
+	ID             uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()" example:"123e4567-e89b-12d3-a456-426614174000"`
+	Name           string    `json:"name" gorm:"not null;size:50" example:"My Project"`
+	Description    string    `json:"description" gorm:"not null;size:255" example:"A description of my project"`
+	ProjectOwnerID uuid.UUID `json:"project_owner_id" gorm:"type:uuid;not null" example:"123e4567-e89b-12d3-a456-426614174000"`
+	CreatedAt      time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt      time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 	// Additional fields for API responses
-	Owner       *User   `json:"owner,omitempty"`
-	Members     []*User `json:"members,omitempty"`
-	MemberCount int     `json:"member_count,omitempty" example:"5"`
+	Owner       *User   `json:"owner,omitempty" gorm:"foreignKey:ProjectOwnerID"`
+	Members     []*User `json:"members,omitempty" gorm:"many2many:project_members;"`
+	MemberCount int     `json:"member_count,omitempty" gorm:"-" example:"5"`
+}
+
+// TableName specifies the table name for the Project model
+func (Project) TableName() string {
+	return "projects"
 }
 
 // ProjectCreateRequest represents the request to create a new project
@@ -36,20 +44,28 @@ type ProjectUpdateRequest struct {
 // ProjectMember represents a project member (from project_has_users table)
 // @Description Project member information
 type ProjectMember struct {
-	ProjectID uuid.UUID `json:"project_id" db:"project_id" example:"123e4567-e89b-12d3-a456-426614174000"`
-	UserID    uuid.UUID `json:"user_id" db:"user_id" example:"123e4567-e89b-12d3-a456-426614174000"`
+	ProjectID uuid.UUID `json:"project_id" gorm:"type:uuid;primaryKey" example:"123e4567-e89b-12d3-a456-426614174000"`
+	UserID    uuid.UUID `json:"user_id" gorm:"type:uuid;primaryKey" example:"123e4567-e89b-12d3-a456-426614174000"`
+	Role      string    `json:"role" gorm:"not null;default:'member';size:20" example:"member"`
+	JoinedAt  time.Time `json:"joined_at" gorm:"autoCreateTime"`
 	// Additional fields for API responses
-	User *User `json:"user,omitempty"`
+	User *User `json:"user,omitempty" gorm:"foreignKey:UserID"`
+}
+
+// TableName specifies the table name for the ProjectMember model
+func (ProjectMember) TableName() string {
+	return "project_members"
 }
 
 // AddMemberRequest represents the request to add a member to a project
 // @Description Request to add a user as a project member
 type AddMemberRequest struct {
 	UserID uuid.UUID `json:"user_id" binding:"required" example:"123e4567-e89b-12d3-a456-426614174000"`
+	Role   string    `json:"role" binding:"required,oneof=viewer member admin owner" example:"member"`
 }
 
-// CreateProject creates a new project in the database
-func CreateProject(db *sql.DB, req ProjectCreateRequest, ownerID uuid.UUID) (*Project, error) {
+// CreateProject creates a new project in the database using GORM
+func CreateProject(db *gorm.DB, req ProjectCreateRequest, ownerID uuid.UUID) (*Project, error) {
 	project := &Project{
 		ID:             uuid.New(),
 		Name:           req.Name,
@@ -57,239 +73,143 @@ func CreateProject(db *sql.DB, req ProjectCreateRequest, ownerID uuid.UUID) (*Pr
 		ProjectOwnerID: ownerID,
 	}
 
-	query := `
-		INSERT INTO projects (id, name, description, project_owner_id)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, name, description, project_owner_id
-	`
-
-	err := db.QueryRow(
-		query,
-		project.ID, project.Name, project.Description, project.ProjectOwnerID,
-	).Scan(
-		&project.ID, &project.Name, &project.Description, &project.ProjectOwnerID,
-	)
-
-	if err != nil {
+	if err := db.Create(project).Error; err != nil {
 		return nil, err
 	}
 
-	// Add owner as project member
-	if err := AddProjectMember(db, project.ID, ownerID); err != nil {
+	// Add owner as project member with owner role
+	projectMember := &ProjectMember{
+		ProjectID: project.ID,
+		UserID:    ownerID,
+		Role:      "owner",
+	}
+
+	if err := db.Create(projectMember).Error; err != nil {
 		return nil, err
 	}
 
 	return project, nil
 }
 
-// GetProject retrieves a project by ID with owner and member information
-func GetProject(db *sql.DB, projectID uuid.UUID) (*Project, error) {
-	project := &Project{}
-	query := `
-		SELECT p.id, p.name, p.description, p.project_owner_id
-		FROM projects p WHERE p.id = $1
-	`
-
-	err := db.QueryRow(query, projectID).Scan(
-		&project.ID, &project.Name, &project.Description, &project.ProjectOwnerID,
-	)
-
-	if err != nil {
+// GetProject retrieves a project by ID with owner and member information using GORM
+func GetProject(db *gorm.DB, projectID uuid.UUID) (*Project, error) {
+	var project Project
+	if err := db.Preload("Owner").Preload("Members").Where("id = ?", projectID).First(&project).Error; err != nil {
 		return nil, err
 	}
 
-	// Get owner information
-	owner, err := GetUserByID(db, project.ProjectOwnerID)
-	if err != nil {
-		return nil, err
-	}
-	project.Owner = owner
+	// Calculate member count
+	var memberCount int64
+	db.Model(&ProjectMember{}).Where("project_id = ?", projectID).Count(&memberCount)
+	project.MemberCount = int(memberCount)
 
-	// Get member count
-	var memberCount int
-	countQuery := `SELECT COUNT(*) FROM project_has_users WHERE project_id = $1`
-	err = db.QueryRow(countQuery, projectID).Scan(&memberCount)
-	if err != nil {
-		return nil, err
-	}
-	project.MemberCount = memberCount
-
-	return project, nil
+	return &project, nil
 }
 
-// GetProjects retrieves projects for a user (either owned or member of)
-func GetProjects(db *sql.DB, userID uuid.UUID) ([]*Project, error) {
-	query := `
-		SELECT DISTINCT p.id, p.name, p.description, p.project_owner_id
-		FROM projects p
-		INNER JOIN project_has_users phu ON p.id = phu.project_id
-		WHERE phu.user_id = $1
-		ORDER BY p.id DESC
-	`
-
-	rows, err := db.Query(query, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
+// GetProjects retrieves all projects for a user using GORM
+func GetProjects(db *gorm.DB, userID uuid.UUID) ([]*Project, error) {
 	var projects []*Project
-	for rows.Next() {
-		project := &Project{}
-		err := rows.Scan(
-			&project.ID, &project.Name, &project.Description, &project.ProjectOwnerID,
-		)
-		if err != nil {
-			return nil, err
-		}
 
-		// Get owner information
-		owner, err := GetUserByID(db, project.ProjectOwnerID)
-		if err != nil {
-			return nil, err
-		}
-		project.Owner = owner
-
-		projects = append(projects, project)
+	// Get projects where user is owner or member
+	if err := db.Joins("JOIN project_members ON projects.id = project_members.project_id").
+		Where("project_members.user_id = ? OR projects.project_owner_id = ?", userID, userID).
+		Preload("Owner").
+		Find(&projects).Error; err != nil {
+		return nil, err
 	}
 
 	return projects, nil
 }
 
-// UpdateProject updates a project in the database
-func UpdateProject(db *sql.DB, projectID uuid.UUID, req ProjectUpdateRequest) (*Project, error) {
-	project, err := GetProject(db, projectID)
-	if err != nil {
-		return nil, err
-	}
+// UpdateProject updates an existing project using GORM
+func UpdateProject(db *gorm.DB, projectID uuid.UUID, req ProjectUpdateRequest) (*Project, error) {
+	updates := make(map[string]interface{})
 
-	// Update fields if provided
 	if req.Name != nil {
-		project.Name = *req.Name
+		updates["name"] = *req.Name
 	}
 	if req.Description != nil {
-		project.Description = *req.Description
+		updates["description"] = *req.Description
 	}
 
-	query := `
-		UPDATE projects 
-		SET name = $1, description = $2
-		WHERE id = $3
-		RETURNING id, name, description, project_owner_id
-	`
-
-	err = db.QueryRow(
-		query,
-		project.Name, project.Description, project.ID,
-	).Scan(
-		&project.ID, &project.Name, &project.Description, &project.ProjectOwnerID,
-	)
-
-	if err != nil {
+	if err := db.Model(&Project{}).Where("id = ?", projectID).Updates(updates).Error; err != nil {
 		return nil, err
 	}
 
-	return project, nil
+	return GetProject(db, projectID)
 }
 
-// DeleteProject deletes a project from the database
-func DeleteProject(db *sql.DB, projectID uuid.UUID) error {
-	query := `DELETE FROM projects WHERE id = $1`
-	_, err := db.Exec(query, projectID)
-	return err
-}
-
-// AddProjectMember adds a member to a project
-func AddProjectMember(db *sql.DB, projectID, userID uuid.UUID) error {
-	query := `
-		INSERT INTO project_has_users (project_id, user_id)
-		VALUES ($1, $2)
-		ON CONFLICT (project_id, user_id) DO NOTHING
-	`
-	_, err := db.Exec(query, projectID, userID)
-	return err
-}
-
-// RemoveProjectMember removes a member from a project
-func RemoveProjectMember(db *sql.DB, projectID, userID uuid.UUID) error {
-	query := `DELETE FROM project_has_users WHERE project_id = $1 AND user_id = $2`
-	_, err := db.Exec(query, projectID, userID)
-	return err
-}
-
-// GetProjectMembers retrieves all members of a project
-func GetProjectMembers(db *sql.DB, projectID uuid.UUID) ([]*ProjectMember, error) {
-	query := `
-		SELECT phu.project_id, phu.user_id,
-		       u.id, u.username, u.email, u.first_name, u.last_name, u.active
-		FROM project_has_users phu
-		INNER JOIN users u ON phu.user_id = u.id
-		WHERE phu.project_id = $1
-		ORDER BY u.first_name ASC
-	`
-
-	rows, err := db.Query(query, projectID)
-	if err != nil {
-		return nil, err
+// DeleteProject deletes a project and all its members using GORM
+func DeleteProject(db *gorm.DB, projectID uuid.UUID) error {
+	// Delete project members first
+	if err := db.Where("project_id = ?", projectID).Delete(&ProjectMember{}).Error; err != nil {
+		return err
 	}
-	defer rows.Close()
 
+	// Delete the project
+	return db.Where("id = ?", projectID).Delete(&Project{}).Error
+}
+
+// AddProjectMember adds a user as a member of a project using GORM
+func AddProjectMember(db *gorm.DB, projectID, userID uuid.UUID, role string) error {
+	projectMember := &ProjectMember{
+		ProjectID: projectID,
+		UserID:    userID,
+		Role:      role,
+	}
+
+	return db.Create(projectMember).Error
+}
+
+// RemoveProjectMember removes a user from a project using GORM
+func RemoveProjectMember(db *gorm.DB, projectID, userID uuid.UUID) error {
+	return db.Where("project_id = ? AND user_id = ?", projectID, userID).Delete(&ProjectMember{}).Error
+}
+
+// IsProjectMember checks if a user is a member of a project using GORM
+func IsProjectMember(db *gorm.DB, projectID, userID uuid.UUID) (bool, error) {
+	var count int64
+	if err := db.Model(&ProjectMember{}).Where("project_id = ? AND user_id = ?", projectID, userID).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// GetProjectMemberRole gets the role of a user in a project using GORM
+func GetProjectMemberRole(db *gorm.DB, projectID, userID uuid.UUID) (string, error) {
+	var projectMember ProjectMember
+	if err := db.Where("project_id = ? AND user_id = ?", projectID, userID).First(&projectMember).Error; err != nil {
+		return "", err
+	}
+	return projectMember.Role, nil
+}
+
+// GetProjectMembers gets all members of a project using GORM
+func GetProjectMembers(db *gorm.DB, projectID uuid.UUID) ([]*ProjectMember, error) {
 	var members []*ProjectMember
-	for rows.Next() {
-		member := &ProjectMember{}
-		user := &User{}
-
-		err := rows.Scan(
-			&member.ProjectID, &member.UserID,
-			&user.ID, &user.Username, &user.Email, &user.FirstName, &user.LastName, &user.Active,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		member.User = user
-		members = append(members, member)
+	if err := db.Where("project_id = ?", projectID).Preload("User").Find(&members).Error; err != nil {
+		return nil, err
 	}
-
 	return members, nil
 }
 
-// IsProjectMember checks if a user is a member of a project
-func IsProjectMember(db *sql.DB, projectID, userID uuid.UUID) (bool, error) {
-	var exists bool
-	query := `SELECT EXISTS(SELECT 1 FROM project_has_users WHERE project_id = $1 AND user_id = $2)`
-	err := db.QueryRow(query, projectID, userID).Scan(&exists)
-	return exists, err
+// UpdateProjectMemberRole updates the role of a project member
+func UpdateProjectMemberRole(db *gorm.DB, projectID, userID uuid.UUID, newRole string) error {
+	return db.Model(&ProjectMember{}).
+		Where("project_id = ? AND user_id = ?", projectID, userID).
+		Update("role", newRole).Error
 }
 
-// IsProjectOwner checks if a user is the owner of a project
-func IsProjectOwner(db *sql.DB, projectID, userID uuid.UUID) (bool, error) {
-	var exists bool
-	query := `SELECT EXISTS(SELECT 1 FROM projects WHERE id = $1 AND project_owner_id = $2)`
-	err := db.QueryRow(query, projectID, userID).Scan(&exists)
-	return exists, err
+// BeforeCreate is a GORM hook that runs before creating a project
+func (p *Project) BeforeCreate(tx *gorm.DB) error {
+	if p.ID == uuid.Nil {
+		p.ID = uuid.New()
+	}
+	return nil
 }
 
-// GetProjectMemberRole returns the role of a user in a project
-// Currently supports "owner" and "member" roles
-func GetProjectMemberRole(db *sql.DB, projectID, userID uuid.UUID) (string, error) {
-	// Check if user is the project owner
-	isOwner, err := IsProjectOwner(db, projectID, userID)
-	if err != nil {
-		return "", err
-	}
-	if isOwner {
-		return "owner", nil
-	}
-
-	// Check if user is a project member
-	isMember, err := IsProjectMember(db, projectID, userID)
-	if err != nil {
-		return "", err
-	}
-	if isMember {
-		return "member", nil
-	}
-
-	return "", nil
+// BeforeUpdate is a GORM hook that runs before updating a project
+func (p *Project) BeforeUpdate(tx *gorm.DB) error {
+	p.UpdatedAt = time.Now()
+	return nil
 }

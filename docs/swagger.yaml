@@ -1,5 +1,13 @@
 basePath: /api/v1
 definitions:
+  controllers.AssignTaskRequest:
+    properties:
+      assignee_id:
+        example: 123e4567-e89b-12d3-a456-426614174000
+        type: string
+    required:
+    - assignee_id
+    type: object
   controllers.AuthRequest:
     description: Authentication request for login
     properties:
@@ -27,6 +35,41 @@ definitions:
         type: string
       user:
         $ref: '#/definitions/models.User'
+    type: object
+  controllers.BulkUpdateFeatureFlagRequest:
+    properties:
+      flags:
+        items:
+          $ref: '#/definitions/controllers.FeatureFlagRequest'
+        type: array
+    required:
+    - flags
+    type: object
+  controllers.FeatureFlagRequest:
+    properties:
+      description:
+        example: Enable new UI design
+        type: string
+      enabled:
+        example: true
+        type: boolean
+      key:
+        example: new_ui
+        type: string
+      value:
+        example: v2
+        type: string
+    required:
+    - description
+    - key
+    type: object
+  controllers.ForgotPasswordRequest:
+    properties:
+      email:
+        example: john@example.com
+        type: string
+    required:
+    - email
     type: object
   controllers.RegisterRequest:
     description: User registration request
@@ -61,9 +104,293 @@ definitions:
     - password
     - username
     type: object
+  controllers.ResetPasswordRequest:
+    properties:
+      password:
+        example: newpassword123
+        maxLength: 100
+        minLength: 6
+        type: string
+      token:
+        example: reset_token_here
+        type: string
+    required:
+    - password
+    - token
+    type: object
+  controllers.UpdateProjectMemberRoleRequest:
+    properties:
+      role:
+        enum:
+        - owner
+        - admin
+        - member
+        example: admin
+        type: string
+    required:
+    - role
+    type: object
+  controllers.UpdateTaskStatusRequest:
+    properties:
+      status:
+        enum:
+        - todo
+        - in_progress
+        - review
+        - done
+        - cancelled
+        example: in_progress
+        type: string
+    required:
+    - status
+    type: object
+  models.AddMemberRequest:
+    description: Request to add a user as a project member
+    properties:
+      role:
+        enum:
+        - viewer
+        - member
+        - admin
+        - owner
+        example: member
+        type: string
+      user_id:
+        example: 123e4567-e89b-12d3-a456-426614174000
+        type: string
+    required:
+    - role
+    - user_id
+    type: object
+  models.EmailError:
+    properties:
+      code:
+        type: string
+      details:
+        type: string
+      error:
+        type: string
+    type: object
+  models.EmailRequest:
+    properties:
+      body:
+        example: This is the email content
+        type: string
+      subject:
+        example: Important Notification
+        type: string
+      to:
+        example: recipient@example.com
+        type: string
+    required:
+    - body
+    - subject
+    - to
+    type: object
+  models.EmailResponse:
+    properties:
+      message:
+        example: Email sent successfully!
+        type: string
+      sentAt:
+        type: string
+    type: object
+  models.ErrorResponse:
+    properties:
+      error:
+        example: Error message
+        type: string
+    type: object
+  models.FeatureFlag:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      enabled:
+        type: boolean
+      id:
+        type: string
+      key:
+        type: string
+      updated_at:
+        type: string
+      value:
+        type: string
+    type: object
+  models.Message:
+    description: Message represents a message in the system
+    properties:
+      content:
+        example: Hello team! How's the project going?
+        type: string
+      created_at:
+        type: string
+      id:
+        example: 123e4567-e89b-12d3-a456-426614174000
+        type: string
+      project:
+        allOf:
+        - $ref: '#/definitions/models.Project'
+        description: Additional fields for API responses
+      project_id:
+        example: 123e4567-e89b-12d3-a456-426614174000
+        type: string
+      sender:
+        $ref: '#/definitions/models.User'
+      sender_id:
+        example: 123e4567-e89b-12d3-a456-426614174000
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.MessageCreateRequest:
+    description: Request to create a new message
+    properties:
+      content:
+        example: Hello team! How's the project going?
+        maxLength: 1000
+        minLength: 1
+        type: string
+    required:
+    - content
+    type: object
+  models.MessageUpdateRequest:
+    description: Request to update an existing message
+    properties:
+      content:
+        example: Updated message content
+        maxLength: 1000
+        minLength: 1
+        type: string
+    required:
+    - content
+    type: object
+  models.MobileMessage:
+    properties:
+      content:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      type:
+        type: string
+      updatedAt:
+        type: string
+      userAvatar:
+        type: string
+      userId:
+        type: string
+      userName:
+        type: string
+    type: object
+  models.MobileMessagesResponse:
+    properties:
+      messages:
+        items:
+          $ref: '#/definitions/models.MobileMessage'
+        type: array
+      pagination:
+        $ref: '#/definitions/models.PaginationInfo'
+    type: object
+  models.MobileProject:
+    properties:
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      isMember:
+        type: boolean
+      isOwner:
+        type: boolean
+      memberCount:
+        type: integer
+      name:
+        type: string
+      ownerId:
+        type: string
+      ownerName:
+        type: string
+      sprintCount:
+        type: integer
+      status:
+        type: string
+      taskCount:
+        type: integer
+      updatedAt:
+        type: string
+    type: object
+  models.MobileProjectResponse:
+    properties:
+      project:
+        $ref: '#/definitions/models.MobileProject'
+    type: object
+  models.MobileProjectsResponse:
+    properties:
+      pagination:
+        $ref: '#/definitions/models.PaginationInfo'
+      projects:
+        items:
+          $ref: '#/definitions/models.MobileProject'
+        type: array
+    type: object
+  models.MobileSprint:
+    properties:
+      completedTaskCount:
+        type: integer
+      createdAt:
+        type: string
+      description:
+        type: string
+      endDate:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      progress:
+        type: number
+      startDate:
+        type: string
+      status:
+        type: string
+      taskCount:
+        type: integer
+      updatedAt:
+        type: string
+    type: object
+  models.MobileSprintsResponse:
+    properties:
+      pagination:
+        $ref: '#/definitions/models.PaginationInfo'
+      sprints:
+        items:
+          $ref: '#/definitions/models.MobileSprint'
+        type: array
+    type: object
+  models.PaginationInfo:
+    properties:
+      currentPage:
+        type: integer
+      hasNext:
+        type: boolean
+      hasPrev:
+        type: boolean
+      itemsPerPage:
+        type: integer
+      totalItems:
+        type: integer
+      totalPages:
+        type: integer
+    type: object
   models.Project:
     description: Project represents a project in the system
     properties:
+      created_at:
+        type: string
       description:
         example: A description of my project
         type: string
@@ -87,6 +414,8 @@ definitions:
       project_owner_id:
         example: 123e4567-e89b-12d3-a456-426614174000
         type: string
+      updated_at:
+        type: string
     type: object
   models.ProjectCreateRequest:
     description: Request to create a new project
@@ -105,44 +434,153 @@ definitions:
     - description
     - name
     type: object
+  models.ProjectMember:
+    description: Project member information
+    properties:
+      joined_at:
+        type: string
+      project_id:
+        example: 123e4567-e89b-12d3-a456-426614174000
+        type: string
+      role:
+        example: member
+        type: string
+      user:
+        allOf:
+        - $ref: '#/definitions/models.User'
+        description: Additional fields for API responses
+      user_id:
+        example: 123e4567-e89b-12d3-a456-426614174000
+        type: string
+    type: object
+  models.ProjectUpdateRequest:
+    description: Request to update an existing project
+    properties:
+      description:
+        example: Updated project description
+        maxLength: 255
+        minLength: 1
+        type: string
+      name:
+        example: Updated Project Name
+        maxLength: 50
+        minLength: 1
+        type: string
+    type: object
   models.Sprint:
+    description: Sprint represents a sprint in the system
     properties:
       created_at:
         type: string
       description:
+        example: First sprint of the project
         type: string
       end_date:
+        example: "2024-01-15T00:00:00Z"
         type: string
       id:
+        example: 123e4567-e89b-12d3-a456-426614174000
         type: string
       name:
+        example: Sprint 1
         type: string
+      project:
+        allOf:
+        - $ref: '#/definitions/models.Project'
+        description: Additional fields for API responses
       project_id:
+        example: 123e4567-e89b-12d3-a456-426614174000
         type: string
       start_date:
+        example: "2024-01-01T00:00:00Z"
         type: string
       status:
+        example: planned
         type: string
+      tasks:
+        items:
+          $ref: '#/definitions/models.Task'
+        type: array
       updated_at:
+        type: string
+    type: object
+  models.SprintCreateRequest:
+    description: Request to create a new sprint
+    properties:
+      description:
+        example: First sprint of the project
+        maxLength: 500
+        type: string
+      end_date:
+        example: "2024-01-15T00:00:00Z"
+        type: string
+      name:
+        example: Sprint 1
+        maxLength: 100
+        minLength: 1
+        type: string
+      start_date:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+    required:
+    - end_date
+    - name
+    - start_date
+    type: object
+  models.SprintUpdateRequest:
+    description: Request to update an existing sprint
+    properties:
+      description:
+        example: Updated sprint description
+        maxLength: 500
+        type: string
+      end_date:
+        example: "2024-01-15T00:00:00Z"
+        type: string
+      name:
+        example: Updated Sprint Name
+        maxLength: 100
+        minLength: 1
+        type: string
+      start_date:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      status:
+        enum:
+        - planned
+        - active
+        - completed
+        - cancelled
+        example: active
         type: string
     type: object
   models.Task:
     description: Task represents a task in the system
     properties:
       assignee:
-        allOf:
-        - $ref: '#/definitions/models.User'
-        description: Additional fields for API responses
+        $ref: '#/definitions/models.User'
       assignee_id:
         example: 123e4567-e89b-12d3-a456-426614174000
         type: string
-      date_created:
-        example: "2025-08-28T14:00:00Z"
+      created_at:
         type: string
       description:
-        example: Implement user authentication
+        example: Create login and registration endpoints
+        type: string
+      due_date:
+        example: "2024-01-15T00:00:00Z"
         type: string
       id:
+        example: 123e4567-e89b-12d3-a456-426614174000
+        type: string
+      priority:
+        example: medium
+        type: string
+      project:
+        allOf:
+        - $ref: '#/definitions/models.Project'
+        description: Additional fields for API responses
+      project_id:
         example: 123e4567-e89b-12d3-a456-426614174000
         type: string
       sprint:
@@ -151,8 +589,16 @@ definitions:
         example: 123e4567-e89b-12d3-a456-426614174000
         type: string
       status:
-        example: 1
+        example: todo
+        type: string
+      story_points:
+        example: 5
         type: integer
+      title:
+        example: Implement user authentication
+        type: string
+      updated_at:
+        type: string
     type: object
   models.TaskCreateRequest:
     description: Request to create a new task
@@ -161,18 +607,43 @@ definitions:
         example: 123e4567-e89b-12d3-a456-426614174000
         type: string
       description:
-        example: Implement user authentication
-        maxLength: 255
-        minLength: 1
+        example: Create login and registration endpoints
+        maxLength: 1000
+        type: string
+      due_date:
+        example: "2024-01-15T00:00:00Z"
+        type: string
+      priority:
+        enum:
+        - low
+        - medium
+        - high
+        - urgent
+        example: medium
+        type: string
+      sprint_id:
+        example: 123e4567-e89b-12d3-a456-426614174000
         type: string
       status:
-        example: 1
-        maximum: 3
-        minimum: 0
+        enum:
+        - todo
+        - in_progress
+        - review
+        - done
+        example: todo
+        type: string
+      story_points:
+        example: 5
+        maximum: 21
+        minimum: 1
         type: integer
+      title:
+        example: Implement user authentication
+        maxLength: 200
+        minLength: 1
+        type: string
     required:
-    - description
-    - status
+    - title
     type: object
   models.TaskUpdateRequest:
     description: Request to update an existing task
@@ -181,15 +652,41 @@ definitions:
         example: 123e4567-e89b-12d3-a456-426614174000
         type: string
       description:
-        example: Implement user authentication with OAuth2
-        maxLength: 255
-        minLength: 1
+        example: Updated task description
+        maxLength: 1000
+        type: string
+      due_date:
+        example: "2024-01-20T00:00:00Z"
+        type: string
+      priority:
+        enum:
+        - low
+        - medium
+        - high
+        - urgent
+        example: high
+        type: string
+      sprint_id:
+        example: 123e4567-e89b-12d3-a456-426614174000
         type: string
       status:
-        example: 2
-        maximum: 3
-        minimum: 0
+        enum:
+        - todo
+        - in_progress
+        - review
+        - done
+        example: in_progress
+        type: string
+      story_points:
+        example: 8
+        maximum: 21
+        minimum: 1
         type: integer
+      title:
+        example: Updated task title
+        maxLength: 200
+        minLength: 1
+        type: string
     type: object
   models.User:
     description: User represents a user in the system
@@ -199,6 +696,8 @@ definitions:
         type: boolean
       avatar_url:
         example: https://example.com/avatar.jpg
+        type: string
+      created_at:
         type: string
       email:
         example: john@example.com
@@ -215,8 +714,40 @@ definitions:
       password:
         example: hashedpassword
         type: string
+      updated_at:
+        type: string
       username:
         example: johndoe
+        type: string
+    type: object
+  models.UserUpdateRequest:
+    description: Request to update an existing user
+    properties:
+      active:
+        example: true
+        type: boolean
+      email:
+        example: john.doe@example.com
+        type: string
+      first_name:
+        example: John
+        maxLength: 50
+        minLength: 1
+        type: string
+      last_name:
+        example: Doe
+        maxLength: 50
+        minLength: 1
+        type: string
+      password:
+        example: newpassword123
+        maxLength: 100
+        minLength: 6
+        type: string
+      username:
+        example: johndoe
+        maxLength: 30
+        minLength: 3
         type: string
     type: object
 host: localhost:8080
@@ -233,6 +764,295 @@ info:
   title: DevHive Backend API
   version: "1.0"
 paths:
+  /admin/feature-flags:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves all feature flags (admin only)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of feature flags
+          schema:
+            items:
+              $ref: '#/definitions/models.FeatureFlag'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get all feature flags
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: Creates a new feature flag (admin only)
+      parameters:
+      - description: Feature flag to create
+        in: body
+        name: flag
+        required: true
+        schema:
+          $ref: '#/definitions/controllers.FeatureFlagRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Feature flag created successfully
+          schema:
+            $ref: '#/definitions/models.FeatureFlag'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "409":
+          description: Feature flag already exists
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create feature flag
+      tags:
+      - admin
+  /admin/feature-flags/{key}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a feature flag (admin only)
+      parameters:
+      - description: Feature flag key
+        in: path
+        name: key
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Feature flag deleted successfully
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Feature flag not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete feature flag
+      tags:
+      - admin
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a specific feature flag by key (admin only)
+      parameters:
+      - description: Feature flag key
+        in: path
+        name: key
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Feature flag details
+          schema:
+            $ref: '#/definitions/models.FeatureFlag'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Feature flag not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get feature flag
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      description: Updates an existing feature flag (admin only)
+      parameters:
+      - description: Feature flag key
+        in: path
+        name: key
+        required: true
+        type: string
+      - description: Updated feature flag data
+        in: body
+        name: flag
+        required: true
+        schema:
+          $ref: '#/definitions/controllers.FeatureFlagRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Feature flag updated successfully
+          schema:
+            $ref: '#/definitions/models.FeatureFlag'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Feature flag not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update feature flag
+      tags:
+      - admin
+  /admin/feature-flags/bulk-update:
+    post:
+      consumes:
+      - application/json
+      description: Bulk updates multiple feature flags (admin only)
+      parameters:
+      - description: Feature flags to update
+        in: body
+        name: flags
+        required: true
+        schema:
+          $ref: '#/definitions/controllers.BulkUpdateFeatureFlagRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Feature flags updated successfully
+          schema:
+            items:
+              $ref: '#/definitions/models.FeatureFlag'
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Bulk update feature flags
+      tags:
+      - admin
+  /auth/forgot-password:
+    post:
+      consumes:
+      - application/json
+      description: Sends a password reset email to the user
+      parameters:
+      - description: Password reset request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controllers.ForgotPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password reset email sent
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Request password reset
+      tags:
+      - auth
   /auth/login:
     post:
       consumes:
@@ -359,32 +1179,72 @@ paths:
       summary: Register a new user
       tags:
       - auth
-  /projects:
-    get:
+  /auth/reset-password:
+    post:
       consumes:
       - application/json
-      description: Retrieve all projects for the authenticated user with pagination
+      description: Resets user password using the reset token
       parameters:
-      - default: 20
-        description: Number of projects to return (max 100)
-        in: query
-        name: limit
-        type: integer
-      - default: 0
-        description: Number of projects to skip
-        in: query
-        name: offset
-        type: integer
+      - description: Password reset with token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/controllers.ResetPasswordRequest'
       produces:
       - application/json
       responses:
         "200":
-          description: Projects with pagination info
+          description: Password reset successful
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Invalid or expired token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Reset password with token
+      tags:
+      - auth
+  /database/execute-script:
+    post:
+      consumes:
+      - application/json
+      description: Executes a database script by name
+      parameters:
+      - description: Script execution request
+        in: body
+        name: request
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Script executed successfully
           schema:
             additionalProperties: true
             type: object
-        "401":
-          description: Unauthorized
+        "400":
+          description: Bad request
           schema:
             additionalProperties:
               type: string
@@ -397,15 +1257,349 @@ paths:
             type: object
       security:
       - BearerAuth: []
+      summary: Execute database script
+      tags:
+      - database
+  /database/scripts:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of available database scripts
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of script names
+          schema:
+            items:
+              type: string
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List database scripts
+      tags:
+      - database
+  /database/scripts/{scriptName}:
+    get:
+      consumes:
+      - application/json
+      description: Returns the content of a specific database script
+      parameters:
+      - description: Script name
+        in: path
+        name: scriptName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Script content
+          schema:
+            type: string
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Script not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get script content
+      tags:
+      - database
+  /database/status:
+    get:
+      consumes:
+      - application/json
+      description: Returns the current database connection status
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Database status
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get database status
+      tags:
+      - database
+  /mail/send:
+    post:
+      consumes:
+      - application/json
+      description: Sends an email to the specified recipient using the mail service
+      parameters:
+      - description: Email request containing To, Subject, and Body
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.EmailRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email sent successfully
+          schema:
+            $ref: '#/definitions/models.EmailResponse'
+        "400":
+          description: Bad request - invalid email request
+          schema:
+            $ref: '#/definitions/models.EmailError'
+        "500":
+          description: Internal server error - email sending failed
+          schema:
+            $ref: '#/definitions/models.EmailError'
+      security:
+      - BearerAuth: []
+      summary: Send email
+      tags:
+      - mail
+  /mobile/v2/projects:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a list of projects optimized for mobile consumption
+      parameters:
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Items per page (default: 20, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: Search term for project names
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MobileProjectsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get projects for mobile app
+      tags:
+      - mobile
+  /mobile/v2/projects/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves detailed project information optimized for mobile consumption
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MobileProjectResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get project details for mobile app
+      tags:
+      - mobile
+  /mobile/v2/projects/{id}/messages:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a list of messages for a specific project optimized for
+        mobile consumption
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Items per page (default: 20, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: Search term for message content
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MobileMessagesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get messages for mobile app
+      tags:
+      - mobile
+  /mobile/v2/projects/{id}/sprints:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a list of sprints for a specific project optimized for
+        mobile consumption
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Items per page (default: 20, max: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: Filter by sprint status (active, completed, planned)
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MobileSprintsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get sprints for mobile app
+      tags:
+      - mobile
+  /projects:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves all projects where the current user is a member or owner
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of projects
+          schema:
+            items:
+              $ref: '#/definitions/models.Project'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Get user projects
       tags:
       - projects
     post:
       consumes:
       - application/json
-      description: Create a new project for the authenticated user
+      description: Creates a new project for the current user
       parameters:
-      - description: Project creation request
+      - description: Project to create
         in: body
         name: project
         required: true
@@ -417,39 +1611,71 @@ paths:
         "201":
           description: Project created successfully
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/models.Project'
         "400":
           description: Bad request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Create a new project
+      summary: Create project
       tags:
       - projects
   /projects/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a project if the user is the owner
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Project deleted successfully
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Project not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete project
+      tags:
+      - projects
     get:
       consumes:
       - application/json
-      description: Retrieve a specific project by ID for the authenticated user
+      description: Retrieves a specific project by ID if the user has access
       parameters:
       - description: Project ID
-        format: uuid
         in: path
         name: id
         required: true
@@ -464,63 +1690,269 @@ paths:
         "400":
           description: Bad request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "403":
-          description: Forbidden - User not a member
+          description: Access denied
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "404":
           description: Project not found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Get a specific project
+      summary: Get project
       tags:
       - projects
-  /projects/{projectId}/sprints/{sprintId}/tasks:
+    put:
+      consumes:
+      - application/json
+      description: Updates an existing project if the user has permission
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated project data
+        in: body
+        name: project
+        required: true
+        schema:
+          $ref: '#/definitions/models.ProjectUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Project updated successfully
+          schema:
+            $ref: '#/definitions/models.Project'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Project not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update project
+      tags:
+      - projects
+  /projects/{id}/members:
     get:
       consumes:
       - application/json
-      description: Retrieve all tasks for a specific sprint with pagination
+      description: Retrieves all members of a specific project
       parameters:
       - description: Project ID
-        format: uuid
         in: path
-        name: projectId
+        name: id
         required: true
         type: string
-      - description: Sprint ID
-        format: uuid
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of project members
+          schema:
+            items:
+              $ref: '#/definitions/models.ProjectMember'
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get project members
+      tags:
+      - projects
+    post:
+      consumes:
+      - application/json
+      description: Adds a user as a member to a project
+      parameters:
+      - description: Project ID
         in: path
-        name: sprintId
+        name: id
         required: true
         type: string
-      - default: 20
-        description: Number of tasks to return (max 100)
+      - description: Member to add
+        in: body
+        name: member
+        required: true
+        schema:
+          $ref: '#/definitions/models.AddMemberRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Member added successfully
+          schema:
+            $ref: '#/definitions/models.ProjectMember'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add project member
+      tags:
+      - projects
+  /projects/{id}/members/{userId}:
+    delete:
+      consumes:
+      - application/json
+      description: Removes a user from a project
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: User ID to remove
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Member removed successfully
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove project member
+      tags:
+      - projects
+  /projects/{id}/members/{userId}/role:
+    put:
+      consumes:
+      - application/json
+      description: Updates the role of a project member
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      - description: New role
+        in: body
+        name: role
+        required: true
+        schema:
+          $ref: '#/definitions/controllers.UpdateProjectMemberRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Member role updated successfully
+          schema:
+            $ref: '#/definitions/models.ProjectMember'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update project member role
+      tags:
+      - projects
+  /projects/{id}/messages:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves all messages for a specific project with pagination
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'Number of messages to return (default: 50)'
         in: query
         name: limit
         type: integer
-      - default: 0
-        description: Number of tasks to skip
+      - description: 'Number of messages to skip (default: 0)'
         in: query
         name: offset
         type: integer
@@ -528,57 +1960,592 @@ paths:
       - application/json
       responses:
         "200":
-          description: Tasks with pagination info
+          description: List of messages
           schema:
-            additionalProperties: true
-            type: object
+            items:
+              $ref: '#/definitions/models.Message'
+            type: array
         "400":
           description: Bad request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties:
-              type: string
-            type: object
-        "403":
-          description: Forbidden - Access denied to project
-          schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get project messages
+      tags:
+      - messages
+    post:
+      consumes:
+      - application/json
+      description: Creates a new message in a project
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Message to create
+        in: body
+        name: message
+        required: true
+        schema:
+          $ref: '#/definitions/models.MessageCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Message created successfully
+          schema:
+            $ref: '#/definitions/models.Message'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create message
+      tags:
+      - messages
+  /projects/{id}/messages/{messageId}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a message if the user has permission
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Message ID
+        in: path
+        name: messageId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Message deleted successfully
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Message not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete message
+      tags:
+      - messages
+    put:
+      consumes:
+      - application/json
+      description: Updates an existing message if the user has permission
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Message ID
+        in: path
+        name: messageId
+        required: true
+        type: string
+      - description: Updated message data
+        in: body
+        name: message
+        required: true
+        schema:
+          $ref: '#/definitions/models.MessageUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Message updated successfully
+          schema:
+            $ref: '#/definitions/models.Message'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Message not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update message
+      tags:
+      - messages
+  /projects/{id}/sprints:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves all sprints for a specific project
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of sprints
+          schema:
+            items:
+              $ref: '#/definitions/models.Sprint'
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get project sprints
+      tags:
+      - sprints
+    post:
+      consumes:
+      - application/json
+      description: Creates a new sprint for a specific project
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Sprint to create
+        in: body
+        name: sprint
+        required: true
+        schema:
+          $ref: '#/definitions/models.SprintCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Sprint created successfully
+          schema:
+            $ref: '#/definitions/models.Sprint'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create sprint
+      tags:
+      - sprints
+  /projects/{id}/sprints/{sprintId}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a sprint if the user has permission
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Sprint ID
+        in: path
+        name: sprintId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Sprint deleted successfully
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Sprint not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete sprint
+      tags:
+      - sprints
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a specific sprint by ID if the user has access
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Sprint ID
+        in: path
+        name: sprintId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sprint details
+          schema:
+            $ref: '#/definitions/models.Sprint'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Sprint not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get sprint
+      tags:
+      - sprints
+    put:
+      consumes:
+      - application/json
+      description: Updates an existing sprint if the user has permission
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Sprint ID
+        in: path
+        name: sprintId
+        required: true
+        type: string
+      - description: Updated sprint data
+        in: body
+        name: sprint
+        required: true
+        schema:
+          $ref: '#/definitions/models.SprintUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sprint updated successfully
+          schema:
+            $ref: '#/definitions/models.Sprint'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Sprint not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update sprint
+      tags:
+      - sprints
+  /projects/{id}/sprints/{sprintId}/complete:
+    post:
+      consumes:
+      - application/json
+      description: Completes a sprint and changes its status to completed
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Sprint ID
+        in: path
+        name: sprintId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sprint completed successfully
+          schema:
+            $ref: '#/definitions/models.Sprint'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Sprint not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Complete sprint
+      tags:
+      - sprints
+  /projects/{id}/sprints/{sprintId}/start:
+    post:
+      consumes:
+      - application/json
+      description: Starts a sprint and changes its status to active
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Sprint ID
+        in: path
+        name: sprintId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sprint started successfully
+          schema:
+            $ref: '#/definitions/models.Sprint'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Sprint not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Start sprint
+      tags:
+      - sprints
+  /projects/{id}/sprints/{sprintId}/tasks:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves all tasks for a specific sprint
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Sprint ID
+        in: path
+        name: sprintId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of tasks
+          schema:
+            items:
+              $ref: '#/definitions/models.Task'
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Get sprint tasks
       tags:
       - tasks
+  /projects/{id}/tasks:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves all tasks for a specific project
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of tasks
+          schema:
+            items:
+              $ref: '#/definitions/models.Task'
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get project tasks
+      tags:
+      - tasks
     post:
       consumes:
       - application/json
-      description: Create a new task in a specific sprint
+      description: Creates a new task for a specific project
       parameters:
       - description: Project ID
-        format: uuid
         in: path
-        name: projectId
+        name: id
         required: true
         type: string
-      - description: Sprint ID
-        format: uuid
-        in: path
-        name: sprintId
-        required: true
-        type: string
-      - description: Task creation request
+      - description: Task to create
         in: body
         name: task
         required: true
@@ -590,126 +2557,87 @@ paths:
         "201":
           description: Task created successfully
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/models.Task'
         "400":
           description: Bad request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "403":
-          description: Forbidden - Access denied to project
+          description: Access denied
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Create a new task
+      summary: Create task
       tags:
       - tasks
-  /projects/{projectId}/sprints/{sprintId}/tasks/{id}:
+  /projects/{id}/tasks/{taskId}:
     delete:
       consumes:
       - application/json
-      description: Delete a task from a sprint
+      description: Deletes a task if the user has permission
       parameters:
       - description: Project ID
-        format: uuid
         in: path
-        name: projectId
-        required: true
-        type: string
-      - description: Sprint ID
-        format: uuid
-        in: path
-        name: sprintId
+        name: id
         required: true
         type: string
       - description: Task ID
-        format: uuid
         in: path
-        name: id
+        name: taskId
         required: true
         type: string
       produces:
       - application/json
       responses:
-        "200":
+        "204":
           description: Task deleted successfully
-          schema:
-            additionalProperties:
-              type: string
-            type: object
         "400":
           description: Bad request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "403":
-          description: Forbidden - Access denied to project
+          description: Access denied
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "404":
           description: Task not found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Delete a task
+      summary: Delete task
       tags:
       - tasks
     get:
       consumes:
       - application/json
-      description: Retrieve a specific task by ID from a sprint
+      description: Retrieves a specific task by ID if the user has access
       parameters:
       - description: Project ID
-        format: uuid
         in: path
-        name: projectId
-        required: true
-        type: string
-      - description: Sprint ID
-        format: uuid
-        in: path
-        name: sprintId
+        name: id
         required: true
         type: string
       - description: Task ID
-        format: uuid
         in: path
-        name: id
+        name: taskId
         required: true
         type: string
       produces:
@@ -722,62 +2650,44 @@ paths:
         "400":
           description: Bad request
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "403":
-          description: Forbidden - Access denied to project
+          description: Access denied
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "404":
           description: Task not found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Get a specific task
+      summary: Get task
       tags:
       - tasks
     put:
       consumes:
       - application/json
-      description: Update an existing task in a sprint
+      description: Updates an existing task if the user has permission
       parameters:
       - description: Project ID
-        format: uuid
-        in: path
-        name: projectId
-        required: true
-        type: string
-      - description: Sprint ID
-        format: uuid
-        in: path
-        name: sprintId
-        required: true
-        type: string
-      - description: Task ID
-        format: uuid
         in: path
         name: id
         required: true
         type: string
-      - description: Task update request
+      - description: Task ID
+        in: path
+        name: taskId
+        required: true
+        type: string
+      - description: Updated task data
         in: body
         name: task
         required: true
@@ -789,7 +2699,159 @@ paths:
         "200":
           description: Task updated successfully
           schema:
-            additionalProperties: true
+            $ref: '#/definitions/models.Task'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Task not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update task
+      tags:
+      - tasks
+  /projects/{id}/tasks/{taskId}/assign:
+    post:
+      consumes:
+      - application/json
+      description: Assigns a task to a specific user
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Task ID
+        in: path
+        name: taskId
+        required: true
+        type: string
+      - description: Task assignment
+        in: body
+        name: assignment
+        required: true
+        schema:
+          $ref: '#/definitions/controllers.AssignTaskRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task assigned successfully
+          schema:
+            $ref: '#/definitions/models.Task'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Task not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Assign task
+      tags:
+      - tasks
+  /projects/{id}/tasks/{taskId}/status:
+    patch:
+      consumes:
+      - application/json
+      description: Updates the status of a specific task
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Task ID
+        in: path
+        name: taskId
+        required: true
+        type: string
+      - description: Task status update
+        in: body
+        name: status
+        required: true
+        schema:
+          $ref: '#/definitions/controllers.UpdateTaskStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task status updated successfully
+          schema:
+            $ref: '#/definitions/models.Task'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Task not found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update task status
+      tags:
+      - tasks
+  /users/{id}/activate:
+    put:
+      consumes:
+      - application/json
+      description: Activates a deactivated user account (admin only)
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User activated successfully
+          schema:
+            additionalProperties:
+              type: string
             type: object
         "400":
           description: Bad request
@@ -804,13 +2866,13 @@ paths:
               type: string
             type: object
         "403":
-          description: Forbidden - Access denied to project
+          description: Insufficient permissions
           schema:
             additionalProperties:
               type: string
             type: object
         "404":
-          description: Task not found
+          description: User not found
           schema:
             additionalProperties:
               type: string
@@ -823,9 +2885,221 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Update a task
+      summary: Activate user account
       tags:
-      - tasks
+      - users
+  /users/{id}/deactivate:
+    put:
+      consumes:
+      - application/json
+      description: Deactivates an active user account (admin only)
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User deactivated successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Insufficient permissions
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Deactivate user account
+      tags:
+      - users
+  /users/avatar:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a new avatar image for the current authenticated user
+      parameters:
+      - description: Avatar image file (JPEG, PNG, GIF, WebP, max 5MB)
+        in: formData
+        name: avatar
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Avatar uploaded successfully
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request - invalid file or size
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: User not authenticated
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload user avatar
+      tags:
+      - users
+  /users/profile:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the current authenticated user's profile information
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User profile retrieved successfully
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: User not authenticated
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get user profile
+      tags:
+      - users
+    put:
+      consumes:
+      - application/json
+      description: Update the current authenticated user's profile information
+      parameters:
+      - description: User profile update request
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.UserUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Profile updated successfully
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: User not authenticated
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update user profile
+      tags:
+      - users
+  /users/search:
+    get:
+      consumes:
+      - application/json
+      description: Search for users by username, email, or name
+      parameters:
+      - description: Search query
+        in: query
+        name: query
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of matching users
+          schema:
+            items:
+              $ref: '#/definitions/models.User'
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Search users
+      tags:
+      - users
 securityDefinitions:
   BearerAuth:
     description: Type "Bearer" followed by a space and JWT token.
