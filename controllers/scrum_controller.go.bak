@@ -1,0 +1,869 @@
+package controllers
+
+import (
+	"net/http"
+
+	"devhive-backend/models"
+	"devhive-backend/services"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+)
+
+// ScrumController handles CRUD operations for Projects, Sprints, and Tasks
+// related to Scrum-based Agile workflows.
+type ScrumController struct {
+	projectService services.ProjectService
+	sprintService  services.SprintService
+	taskService    services.TaskService
+	userService    services.UserService
+}
+
+// NewScrumController creates a new instance of ScrumController
+func NewScrumController(
+	projectService services.ProjectService,
+	sprintService services.SprintService,
+	taskService services.TaskService,
+	userService services.UserService,
+) *ScrumController {
+	return &ScrumController{
+		projectService: projectService,
+		sprintService:  sprintService,
+		taskService:    taskService,
+		userService:    userService,
+	}
+}
+
+// -------------------- CREATE --------------------
+
+// CreateProject creates a new project
+// @Summary Create a new project
+// @Description Creates a new project
+// @Tags scrum
+// @Accept json
+// @Produce json
+// @Param project body models.ProjectCreateRequest true "Project to create"
+// @Success 200 {object} models.Project "Project created successfully"
+// @Failure 400 {object} models.ErrorResponse "Bad request"
+// @Failure 500 {object} models.ErrorResponse "Internal server error"
+// @Router /api/scrum/project [post]
+func (sc *ScrumController) CreateProject(c *gin.Context) {
+	var req models.ProjectCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get user ID from context (assuming it's set by auth middleware)
+	userIDStr, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	project, err := sc.projectService.CreateProject(c.Request.Context(), req, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while creating the project"})
+		return
+	}
+
+	c.JSON(http.StatusOK, project)
+}
+
+// CreateSprint creates a new sprint
+// @Summary Create a new sprint
+// @Description Creates a new sprint
+// @Tags scrum
+// @Accept json
+// @Produce json
+// @Param sprint body models.SprintCreateRequest true "Sprint to create"
+// @Success 200 {object} models.Sprint "Sprint created successfully"
+// @Failure 400 {object} models.ErrorResponse "Bad request"
+// @Failure 500 {object} models.ErrorResponse "Internal server error"
+// @Router /api/scrum/sprint [post]
+func (sc *ScrumController) CreateSprint(c *gin.Context) {
+	var req models.SprintCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get user ID and project ID from context or params
+	userIDStr, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	projectID, err := uuid.Parse(req.ProjectID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
+
+	sprint, err := sc.sprintService.CreateSprint(c.Request.Context(), req, projectID, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while creating the sprint"})
+		return
+	}
+
+	c.JSON(http.StatusOK, sprint)
+}
+
+// CreateTask creates a new task
+// @Summary Create a new task
+// @Description Creates a new task
+// @Tags scrum
+// @Accept json
+// @Produce json
+// @Param task body models.TaskCreateRequest true "Task to create"
+// @Success 200 {object} models.Task "Task created successfully"
+// @Failure 400 {object} models.ErrorResponse "Bad request"
+// @Failure 500 {object} models.ErrorResponse "Internal server error"
+// @Router /api/scrum/task [post]
+func (sc *ScrumController) CreateTask(c *gin.Context) {
+	var req models.TaskCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	projectID, err := uuid.Parse(req.ProjectID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
+
+	task, err := sc.taskService.CreateTask(c.Request.Context(), req, projectID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while creating the task"})
+		return
+	}
+
+	c.JSON(http.StatusOK, task)
+}
+
+// -------------------- DELETE --------------------
+
+// DeleteProject deletes a project and all associated data
+// @Summary Delete a project
+// @Description Deletes a project and all associated data
+// @Tags scrum
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {string} string "Project deleted successfully"
+// @Failure 400 {object} models.ErrorResponse "Bad request"
+// @Failure 500 {object} models.ErrorResponse "Internal server error"
+// @Router /api/scrum/project/{projectId} [delete]
+func (sc *ScrumController) DeleteProject(c *gin.Context) {
+	projectId := c.Param("projectId")
+	if projectId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Project ID is required"})
+		return
+	}
+
+	projectUUID, err := uuid.Parse(projectId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
+
+	userIDStr, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	err = sc.projectService.DeleteProject(c.Request.Context(), projectUUID, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete project. Ensure all dependencies are removed"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Project " + projectId + " deleted successfully"})
+}
+
+// DeleteSprint deletes a sprint by ID
+// @Summary Delete a sprint
+// @Description Deletes a sprint by ID
+// @Tags scrum
+// @Produce json
+// @Param sprintId path string true "Sprint ID"
+// @Success 200 {string} string "Sprint deleted successfully"
+// @Failure 400 {object} models.ErrorResponse "Bad request"
+// @Failure 500 {object} models.ErrorResponse "Internal server error"
+// @Router /api/scrum/sprint/{sprintId} [delete]
+func (sc *ScrumController) DeleteSprint(c *gin.Context) {
+	sprintId := c.Param("sprintId")
+	if sprintId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "SprintID is required"})
+		return
+	}
+
+	sprintUUID, err := uuid.Parse(sprintId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid sprint ID"})
+		return
+	}
+
+	userIDStr, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	err = sc.sprintService.DeleteSprint(c.Request.Context(), sprintUUID, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while deleting the Sprint"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Sprint deleted successfully"})
+}
+
+// DeleteTask deletes a task by ID
+// @Summary Delete a task
+// @Description Deletes a task by ID
+// @Tags scrum
+// @Produce json
+// @Param taskId path string true "Task ID"
+// @Success 200 {string} string "Task deleted successfully"
+// @Failure 400 {object} models.ErrorResponse "Bad request"
+// @Failure 500 {object} models.ErrorResponse "Internal server error"
+// @Router /api/scrum/task/{taskId} [delete]
+func (sc *ScrumController) DeleteTask(c *gin.Context) {
+	taskId := c.Param("taskId")
+	if taskId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "TaskID is required"})
+		return
+	}
+
+	taskUUID, err := uuid.Parse(taskId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		return
+	}
+
+	err = sc.taskService.DeleteTask(c.Request.Context(), taskUUID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while deleting the Task"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Task deleted successfully"})
+}
+
+// -------------------- UPDATE --------------------
+
+// EditProject updates a project
+// @Summary Update a project
+// @Description Updates a project
+// @Tags scrum
+// @Accept json
+// @Produce json
+// @Param project body models.ProjectUpdateRequest true "Project to update"
+// @Success 200 {object} models.Project "Project updated successfully"
+// @Failure 400 {object} models.ErrorResponse "Bad request"
+// @Failure 500 {object} models.ErrorResponse "Internal server error"
+// @Router /api/scrum/project [put]
+func (sc *ScrumController) EditProject(c *gin.Context) {
+	var req models.ProjectUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get project ID from request or context
+	projectID, err := uuid.Parse(req.ID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
+
+	userIDStr, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	project, err := sc.projectService.UpdateProject(c.Request.Context(), projectID, req, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while updating the Project"})
+		return
+	}
+
+	c.JSON(http.StatusOK, project)
+}
+
+// EditSprint updates a sprint
+// @Summary Update a sprint
+// @Description Updates a sprint
+// @Tags scrum
+// @Accept json
+// @Produce json
+// @Param sprint body models.SprintUpdateRequest true "Sprint to update"
+// @Success 200 {object} models.Sprint "Sprint updated successfully"
+// @Failure 400 {object} models.ErrorResponse "Bad request"
+// @Failure 500 {object} models.ErrorResponse "Internal server error"
+// @Router /api/scrum/sprint [put]
+func (sc *ScrumController) EditSprint(c *gin.Context) {
+	var req models.SprintUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	sprintID, err := uuid.Parse(req.ID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid sprint ID"})
+		return
+	}
+
+	userIDStr, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	sprint, err := sc.sprintService.UpdateSprint(c.Request.Context(), sprintID, req, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while updating the Sprint"})
+		return
+	}
+
+	c.JSON(http.StatusOK, sprint)
+}
+
+// EditTask updates a task
+// @Summary Update a task
+// @Description Updates a task
+// @Tags scrum
+// @Accept json
+// @Produce json
+// @Param task body models.TaskUpdateRequest true "Task to update"
+// @Success 200 {object} models.Task "Task updated successfully"
+// @Failure 400 {object} models.ErrorResponse "Bad request"
+// @Failure 500 {object} models.ErrorResponse "Internal server error"
+// @Router /api/scrum/task [put]
+func (sc *ScrumController) EditTask(c *gin.Context) {
+	var req models.TaskUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	taskID, err := uuid.Parse(req.ID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		return
+	}
+
+	task, err := sc.taskService.UpdateTask(c.Request.Context(), taskID, req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while updating the Task"})
+		return
+	}
+
+	c.JSON(http.StatusOK, task)
+}
+
+// UpdateTaskStatus updates the status of a task
+// @Summary Update task status
+// @Description Updates the status of a task
+// @Tags scrum
+// @Accept json
+// @Produce json
+// @Param taskStatus body ScrumUpdateTaskStatusRequest true "Task status update"
+// @Success 200 {string} string "Task status updated successfully"
+// @Failure 400 {object} models.ErrorResponse "Bad request"
+// @Failure 500 {object} models.ErrorResponse "Internal server error"
+// @Router /api/scrum/task/status [put]
+func (sc *ScrumController) UpdateTaskStatus(c *gin.Context) {
+	var req ScrumUpdateTaskStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// For now, we'll use the existing UpdateTask method
+	// You may need to add a specific UpdateTaskStatus method to your TaskService
+	taskID, err := uuid.Parse(req.TaskID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		return
+	}
+
+	updateReq := models.TaskUpdateRequest{
+		Status: &req.Status,
+	}
+
+	task, err := sc.taskService.UpdateTask(c.Request.Context(), taskID, updateReq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while updating the Task"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Task status updated successfully", "task": task})
+}
+
+// -------------------- READ --------------------
+
+// GetProjectMembers gets all members of a project
+// @Summary Get project members
+// @Description Gets all members of a project
+// @Tags scrum
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {array} models.ProjectMember "Project members"
+// @Failure 404 {object} models.ErrorResponse "No users found"
+// @Router /api/scrum/project/members/{projectId} [get]
+func (sc *ScrumController) GetProjectMembers(c *gin.Context) {
+	projectId := c.Param("projectId")
+	projectUUID, err := uuid.Parse(projectId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
+
+	// This would need to be implemented in your ProjectService
+	// For now, returning a placeholder response
+	c.JSON(http.StatusOK, gin.H{"message": "Project members endpoint - implementation needed"})
+}
+
+// GetSprintTasks gets all tasks in a sprint
+// @Summary Get sprint tasks
+// @Description Gets all tasks in a sprint
+// @Tags scrum
+// @Produce json
+// @Param sprintId path string true "Sprint ID"
+// @Success 200 {array} models.Task "Sprint tasks"
+// @Failure 404 {object} models.ErrorResponse "No tasks found"
+// @Router /api/scrum/sprint/tasks/{sprintId} [get]
+func (sc *ScrumController) GetSprintTasks(c *gin.Context) {
+	sprintId := c.Param("sprintId")
+	sprintUUID, err := uuid.Parse(sprintId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid sprint ID"})
+		return
+	}
+
+	tasks, err := sc.taskService.GetTasksBySprint(c.Request.Context(), sprintUUID)
+	if err != nil || len(tasks) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No tasks found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, tasks)
+}
+
+// GetProjectTasks gets all tasks in a project
+// @Summary Get project tasks
+// @Description Gets all tasks in a project
+// @Tags scrum
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {array} models.Task "Project tasks"
+// @Failure 404 {object} models.ErrorResponse "No tasks found"
+// @Router /api/scrum/project/tasks/{projectId} [get]
+func (sc *ScrumController) GetProjectTasks(c *gin.Context) {
+	projectId := c.Param("projectId")
+	projectUUID, err := uuid.Parse(projectId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
+
+	tasks, err := sc.taskService.GetTasksByProject(c.Request.Context(), projectUUID)
+	if err != nil || len(tasks) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No tasks found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, tasks)
+}
+
+// GetProjectSprints gets all sprints in a project
+// @Summary Get project sprints
+// @Description Gets all sprints in a project
+// @Tags scrum
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {array} models.Sprint "Project sprints"
+// @Failure 404 {object} models.ErrorResponse "No sprints found"
+// @Router /api/scrum/project/sprints/{projectId} [get]
+func (sc *ScrumController) GetProjectSprints(c *gin.Context) {
+	projectId := c.Param("projectId")
+	projectUUID, err := uuid.Parse(projectId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
+
+	sprints, err := sc.sprintService.GetSprintsForProject(c.Request.Context(), projectUUID)
+	if err != nil || len(sprints) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No sprints found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, sprints)
+}
+
+// GetProjectByID gets a single project by ID
+// @Summary Get project by ID
+// @Description Gets a single project by ID
+// @Tags scrum
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {object} models.Project "Project found"
+// @Failure 404 {object} models.ErrorResponse "No project found"
+// @Router /api/scrum/project/{projectId} [get]
+func (sc *ScrumController) GetProjectByID(c *gin.Context) {
+	projectId := c.Param("projectId")
+	projectUUID, err := uuid.Parse(projectId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
+
+	project, err := sc.projectService.GetProject(c.Request.Context(), projectUUID)
+	if err != nil || project == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No project found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, project)
+}
+
+// GetSprintByID gets a single sprint by ID
+// @Summary Get sprint by ID
+// @Description Gets a single sprint by ID
+// @Tags scrum
+// @Produce json
+// @Param sprintId path string true "Sprint ID"
+// @Success 200 {object} models.Sprint "Sprint found"
+// @Failure 404 {object} models.ErrorResponse "No sprint found"
+// @Router /api/scrum/sprint/{sprintId} [get]
+func (sc *ScrumController) GetSprintByID(c *gin.Context) {
+	sprintId := c.Param("sprintId")
+	sprintUUID, err := uuid.Parse(sprintId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid sprint ID"})
+		return
+	}
+
+	sprint, err := sc.sprintService.GetSprintByID(c.Request.Context(), sprintUUID)
+	if err != nil || sprint == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No sprint found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, sprint)
+}
+
+// GetTaskByID gets a single task by ID
+// @Summary Get task by ID
+// @Description Gets a single task by ID
+// @Tags scrum
+// @Produce json
+// @Param taskId path string true "Task ID"
+// @Success 200 {object} models.Task "Task found"
+// @Failure 404 {object} models.ErrorResponse "No task found"
+// @Router /api/scrum/task/{taskId} [get]
+func (sc *ScrumController) GetTaskByID(c *gin.Context) {
+	taskId := c.Param("taskId")
+	taskUUID, err := uuid.Parse(taskId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		return
+	}
+
+	task, err := sc.taskService.GetTaskByID(c.Request.Context(), taskUUID)
+	if err != nil || task == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No task found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, task)
+}
+
+// GetUserProjects gets all projects owned by a specific user
+// @Summary Get user projects
+// @Description Gets all projects owned by a specific user
+// @Tags scrum
+// @Produce json
+// @Param userId path string true "User ID"
+// @Success 200 {array} models.Project "User projects"
+// @Failure 400 {object} models.ErrorResponse "User ID is required"
+// @Failure 404 {object} models.ErrorResponse "No projects found for the specified user"
+// @Router /api/scrum/projects/user/{userId} [get]
+func (sc *ScrumController) GetUserProjects(c *gin.Context) {
+	userId := c.Param("userId")
+	if userId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User ID is required"})
+		return
+	}
+
+	userUUID, err := uuid.Parse(userId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	projects, err := sc.projectService.GetProjectsByUser(c.Request.Context(), userUUID)
+	if err != nil || len(projects) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No projects found for the specified user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, projects)
+}
+
+// -------------------- MEMBERSHIP --------------------
+
+// JoinProject adds a user to a project
+// @Summary Join project
+// @Description Adds a user to a project
+// @Tags scrum
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param userId path string true "User ID"
+// @Success 200 {string} string "User joined project successfully"
+// @Failure 400 {object} models.ErrorResponse "ProjectID or UserID is required"
+// @Failure 500 {object} models.ErrorResponse "Internal server error"
+// @Router /api/scrum/project/{projectId}/{userId} [post]
+func (sc *ScrumController) JoinProject(c *gin.Context) {
+	projectId := c.Param("projectId")
+	userId := c.Param("userId")
+	if projectId == "" || userId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ProjectID or UserID is required"})
+		return
+	}
+
+	projectUUID, err := uuid.Parse(projectId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
+
+	userUUID, err := uuid.Parse(userId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	// Get owner ID from context or project
+	ownerIDStr, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	ownerUUID, err := uuid.Parse(ownerIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid owner ID"})
+		return
+	}
+
+	err = sc.projectService.AddMember(c.Request.Context(), projectUUID, userUUID, ownerUUID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while joining the Project"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "User joined project successfully"})
+}
+
+// RemoveMemberFromProject removes a user from a project
+// @Summary Remove project member
+// @Description Removes a user from a project
+// @Tags scrum
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param userId path string true "User ID"
+// @Success 200 {string} string "User removed from project successfully"
+// @Failure 400 {object} models.ErrorResponse "Project ID or User ID is missing"
+// @Failure 500 {object} models.ErrorResponse "Internal server error"
+// @Router /api/scrum/project/{projectId}/members/{userId} [delete]
+func (sc *ScrumController) RemoveMemberFromProject(c *gin.Context) {
+	projectId := c.Param("projectId")
+	userId := c.Param("userId")
+	if projectId == "" || userId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Project ID or User ID is missing"})
+		return
+	}
+
+	projectUUID, err := uuid.Parse(projectId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
+
+	userUUID, err := uuid.Parse(userId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	// Get owner ID from context
+	ownerIDStr, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	ownerUUID, err := uuid.Parse(ownerIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid owner ID"})
+		return
+	}
+
+	err = sc.projectService.RemoveMember(c.Request.Context(), projectUUID, userUUID, ownerUUID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while removing the member"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "User " + userId + " was removed from Project " + projectId})
+}
+
+// GetActiveSprints returns active sprints for a given project
+// @Summary Get active sprints
+// @Description Returns active sprints for a given project
+// @Tags scrum
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Success 200 {array} models.Sprint "Active sprints"
+// @Failure 404 {object} models.ErrorResponse "No active sprints found"
+// @Router /api/scrum/project/sprints/active/{projectId} [get]
+func (sc *ScrumController) GetActiveSprints(c *gin.Context) {
+	projectId := c.Param("projectId")
+	projectUUID, err := uuid.Parse(projectId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
+
+	// This would need to be implemented in your SprintService
+	// For now, returning a placeholder response
+	c.JSON(http.StatusOK, gin.H{"message": "Active sprints endpoint - implementation needed"})
+}
+
+// LeaveProject allows a user to leave a project, if not the owner
+// @Summary Leave project
+// @Description Allows a user to leave a project, if not the owner
+// @Tags scrum
+// @Accept json
+// @Produce json
+// @Param model body LeaveProjectRequest true "Leave project request"
+// @Success 200 {string} string "Successfully left the project"
+// @Failure 400 {object} models.ErrorResponse "Leave project data is null or user is owner"
+// @Failure 500 {object} models.ErrorResponse "Internal server error"
+// @Router /api/scrum/project/leave [post]
+func (sc *ScrumController) LeaveProject(c *gin.Context) {
+	var req LeaveProjectRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	projectUUID, err := uuid.Parse(req.ProjectID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+		return
+	}
+
+	userUUID, err := uuid.Parse(req.UserID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	// For now, just remove the member
+	// You would need to implement IsProjectOwner in your ProjectService
+	err = sc.projectService.RemoveMember(c.Request.Context(), projectUUID, userUUID, userUUID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while trying to leave the project"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Successfully left the project"})
+}
+
+// UpdateProjectOwner transfers ownership of a project to another user
+// @Summary Update project owner
+// @Description Transfers ownership of a project to another user
+// @Tags scrum
+// @Accept json
+// @Produce json
+// @Param model body UpdateProjectOwnerRequest true "Update project owner request"
+// @Success 200 {string} string "Project owner updated successfully"
+// @Failure 400 {object} models.ErrorResponse "Update project owner data is null"
+// @Failure 500 {object} models.ErrorResponse "Internal server error"
+// @Router /api/scrum/project/update-project-owner [put]
+func (sc *ScrumController) UpdateProjectOwner(c *gin.Context) {
+	var req UpdateProjectOwnerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// This would need to be implemented in your ProjectService
+	// For now, returning a placeholder response
+	c.JSON(http.StatusOK, gin.H{"message": "Update project owner endpoint - implementation needed"})
+}
+
+// -------------------- REQUEST MODELS --------------------
+
+// ScrumUpdateTaskStatusRequest represents the request to update task status
+type ScrumUpdateTaskStatusRequest struct {
+	TaskID string `json:"taskId" binding:"required"`
+	Status string `json:"status" binding:"required"`
+}
+
+// LeaveProjectRequest represents the request to leave a project
+type LeaveProjectRequest struct {
+	ProjectID string `json:"projectId" binding:"required"`
+	UserID    string `json:"userId" binding:"required"`
+}
+
+// UpdateProjectOwnerRequest represents the request to update project owner
+type UpdateProjectOwnerRequest struct {
+	ProjectID  string `json:"projectId" binding:"required"`
+	NewOwnerID string `json:"newOwnerId" binding:"required"`
+}

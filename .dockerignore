@@ -38,7 +38,6 @@ logs/
 
 # Documentation
 *.md
-docs/
 
 # Test files
 *_test.go

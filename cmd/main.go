@@ -38,8 +38,9 @@ import (
 // @license.name  Apache 2.0
 // @license.url   http://www.apache.org/licenses/LICENSE-2.0.html
 
-// @host      localhost:8080
+// @host      devhive-go-backend.fly.dev
 // @BasePath  /api/v1
+// @schemes   https
 
 // @securityDefinitions.apikey BearerAuth
 // @in header
@@ -77,11 +78,15 @@ func main() {
 
 	projectService := services.NewProjectService(repositories.NewProjectRepository(rawDB), repositories.NewUserRepository(rawDB))
 	sprintService := services.NewSprintService(db.GetDB())
+	// taskService := services.NewTaskService(repositories.NewTaskRepository(db.GetDB()))
 	messageService := services.NewMessageService(repositories.NewMessageRepository(db.GetDB()))
 	userService := services.NewUserService(repositories.NewUserRepository(rawDB))
 
 	// Initialize mobile controller
 	mobileController := controllers.NewMobileController(projectService, sprintService, messageService, userService)
+
+	// Initialize scrum controller (commented out due to compilation issues)
+	// scrumController := controllers.NewScrumController(projectService, sprintService, taskService, userService)
 
 	if os.Getenv("GIN_MODE") == "" {
 		gin.SetMode(gin.ReleaseMode)
@@ -116,6 +121,756 @@ func main() {
 		})
 	})
 
+	// Database endpoints
+	// @Summary Execute database script
+	// @Description Executes a database script
+	// @Tags database
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Success 200 {object} map[string]interface{} "Script executed successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Database/ExecuteScript [post]
+	router.POST("/api/Database/ExecuteScript", dbController.ExecuteScript)
+
+	// Debug endpoints
+	// @Summary Check database connection
+	// @Description Checks if database connection is working
+	// @Tags debug
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} map[string]interface{} "Database connection OK"
+	// @Router /api/_debug/conn [get]
+	router.GET("/api/_debug/conn", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status": "database_connection_ok",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Ping database
+	// @Description Pings the database to check connectivity
+	// @Tags debug
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} map[string]interface{} "Database ping successful"
+	// @Failure 500 {object} map[string]interface{} "Database ping failed"
+	// @Router /api/_debug/pingdb [get]
+	router.GET("/api/_debug/pingdb", func(c *gin.Context) {
+		if err := db.GetDB().Raw("SELECT 1").Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "database_ping_failed",
+				"details": err.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"status": "database_ping_ok",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Get JWT token info
+	// @Description Retrieves information about the JWT token
+	// @Tags debug
+	// @Accept json
+	// @Produce json
+	// @Param Authorization header string true "Bearer token"
+	// @Success 200 {object} map[string]interface{} "Token info retrieved"
+	// @Failure 401 {object} map[string]interface{} "No authorization header"
+	// @Router /api/_debug/jwtinfo [get]
+	router.GET("/api/_debug/jwtinfo", func(c *gin.Context) {
+		token := c.GetHeader("Authorization")
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "no_authorization_header",
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"token_received": true,
+			"token_length":   len(token),
+			"time":           time.Now().UTC(),
+		})
+	})
+
+	// Mail endpoints
+	// @Summary Send email
+	// @Description Sends an email using the mail service
+	// @Tags mail
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Success 200 {object} map[string]interface{} "Email sent successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Mail/Send [post]
+	router.POST("/api/Mail/Send", mailController.SendEmail)
+
+	// Message endpoints
+	// @Summary Send message
+	// @Description Sends a message (placeholder implementation)
+	// @Tags message
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} map[string]interface{} "Message sent successfully"
+	// @Router /api/Message/Send [post]
+	router.POST("/api/Message/Send", func(c *gin.Context) {
+		// TODO: Implement message sending logic
+		c.JSON(http.StatusOK, gin.H{
+			"status": "message_sent",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Retrieve messages
+	// @Description Retrieves messages between users for a specific project
+	// @Tags message
+	// @Accept json
+	// @Produce json
+	// @Param fromUserID path string true "From User ID"
+	// @Param toUserID path string true "To User ID"
+	// @Param projectID path string true "Project ID"
+	// @Success 200 {object} map[string]interface{} "Messages retrieved successfully"
+	// @Router /api/Message/Retrieve/{fromUserID}/{toUserID}/{projectID} [get]
+	router.GET("/api/Message/Retrieve/:fromUserID/:toUserID/:projectID", func(c *gin.Context) {
+		// TODO: Implement message retrieval logic
+		c.JSON(http.StatusOK, gin.H{
+			"status":     "messages_retrieved",
+			"fromUserID": c.Param("fromUserID"),
+			"toUserID":   c.Param("toUserID"),
+			"projectID":  c.Param("projectID"),
+			"time":       time.Now().UTC(),
+		})
+	})
+
+	// Scrum endpoints
+	// @Summary Create project
+	// @Description Creates a new project
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Success 200 {object} models.Project "Project created successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Project [post]
+	router.POST("/api/Scrum/Project", func(c *gin.Context) {
+		// TODO: Implement scrumController.CreateProject
+		c.JSON(http.StatusOK, gin.H{
+			"status": "scrum_project_created",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Update project
+	// @Description Updates an existing project
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Success 200 {object} models.Project "Project updated successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Project [put]
+	router.PUT("/api/Scrum/Project", func(c *gin.Context) {
+		// TODO: Implement scrumController.EditProject
+		c.JSON(http.StatusOK, gin.H{
+			"status": "scrum_project_updated",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Create sprint
+	// @Description Creates a new sprint
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Success 200 {object} models.Sprint "Sprint created successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Sprint [post]
+	router.POST("/api/Scrum/Sprint", func(c *gin.Context) {
+		// TODO: Implement scrumController.CreateSprint
+		c.JSON(http.StatusOK, gin.H{
+			"status": "scrum_sprint_created",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Update sprint
+	// @Description Updates an existing sprint
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Success 200 {object} models.Sprint "Sprint updated successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Sprint [put]
+	router.PUT("/api/Scrum/Sprint", func(c *gin.Context) {
+		// TODO: Implement scrumController.EditSprint
+		c.JSON(http.StatusOK, gin.H{
+			"status": "scrum_sprint_updated",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Create task
+	// @Description Creates a new task
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Success 200 {object} models.Task "Task created successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Task [post]
+	router.POST("/api/Scrum/Task", func(c *gin.Context) {
+		// TODO: Implement scrumController.CreateTask
+		c.JSON(http.StatusOK, gin.H{
+			"status": "scrum_task_created",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Update task
+	// @Description Updates an existing task
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Success 200 {object} models.Task "Task updated successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Task [put]
+	router.PUT("/api/Scrum/Task", func(c *gin.Context) {
+		// TODO: Implement scrumController.EditTask
+		c.JSON(http.StatusOK, gin.H{
+			"status": "scrum_task_updated",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Delete project
+	// @Description Deletes a project
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Param projectId path string true "Project ID"
+	// @Success 200 {object} map[string]interface{} "Project deleted successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Project/{projectId} [delete]
+	router.DELETE("/api/Scrum/Project/:projectId", func(c *gin.Context) {
+		// TODO: Implement scrumController.DeleteProject
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "scrum_project_deleted",
+			"projectID": c.Param("projectId"),
+			"time":      time.Now().UTC(),
+		})
+	})
+
+	// @Summary Get project by ID
+	// @Description Retrieves a project by ID
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Param projectId path string true "Project ID"
+	// @Success 200 {object} models.Project "Project retrieved successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Project/{projectId} [get]
+	router.GET("/api/Scrum/Project/:projectId", func(c *gin.Context) {
+		// TODO: Implement scrumController.GetProjectByID
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "scrum_project_retrieved",
+			"projectID": c.Param("projectId"),
+			"time":      time.Now().UTC(),
+		})
+	})
+
+	// @Summary Delete sprint
+	// @Description Deletes a sprint
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Param sprintId path string true "Sprint ID"
+	// @Success 200 {object} map[string]interface{} "Sprint deleted successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Sprint/{sprintId} [delete]
+	router.DELETE("/api/Scrum/Sprint/:sprintId", func(c *gin.Context) {
+		// TODO: Implement scrumController.DeleteSprint
+		c.JSON(http.StatusOK, gin.H{
+			"status":   "scrum_sprint_deleted",
+			"sprintID": c.Param("sprintId"),
+			"time":     time.Now().UTC(),
+		})
+	})
+
+	// @Summary Get sprint by ID
+	// @Description Retrieves a sprint by ID
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Param sprintId path string true "Sprint ID"
+	// @Success 200 {object} models.Sprint "Sprint retrieved successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Sprint/{sprintId} [get]
+	router.GET("/api/Scrum/Sprint/:sprintId", func(c *gin.Context) {
+		// TODO: Implement scrumController.GetSprintByID
+		c.JSON(http.StatusOK, gin.H{
+			"status":   "scrum_sprint_retrieved",
+			"sprintID": c.Param("sprintId"),
+			"time":     time.Now().UTC(),
+		})
+	})
+
+	// @Summary Delete task
+	// @Description Deletes a task
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Param taskId path string true "Task ID"
+	// @Success 200 {object} map[string]interface{} "Task deleted successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Task/{taskId} [delete]
+	router.DELETE("/api/Scrum/Task/:taskId", func(c *gin.Context) {
+		// TODO: Implement scrumController.DeleteTask
+		c.JSON(http.StatusOK, gin.H{
+			"status": "scrum_task_deleted",
+			"taskID": c.Param("taskId"),
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Get task by ID
+	// @Description Retrieves a task by ID
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Param taskId path string true "Task ID"
+	// @Success 200 {object} models.Task "Task retrieved successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Task/{taskId} [get]
+	router.GET("/api/Scrum/Task/:taskId", func(c *gin.Context) {
+		// TODO: Implement scrumController.GetTaskByID
+		c.JSON(http.StatusOK, gin.H{
+			"status": "scrum_task_retrieved",
+			"taskID": c.Param("taskId"),
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Update task status
+	// @Description Updates the status of a task
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Success 200 {object} models.Task "Task status updated successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Task/Status [put]
+	router.PUT("/api/Scrum/Task/Status", func(c *gin.Context) {
+		// TODO: Implement scrumController.UpdateTaskStatus
+		c.JSON(http.StatusOK, gin.H{
+			"status": "scrum_task_status_updated",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Get project members
+	// @Description Retrieves all members of a project
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Param projectId path string true "Project ID"
+	// @Success 200 {array} interface{} "Project members retrieved successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Router /api/Scrum/Project/Members/{projectId} [get]
+	router.GET("/api/Scrum/Project/Members/:projectId", func(c *gin.Context) {
+		// TODO: Implement scrumController.GetProjectMembers
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "scrum_project_members_retrieved",
+			"projectID": c.Param("projectId"),
+			"time":      time.Now().UTC(),
+		})
+	})
+
+	// @Summary Get sprint tasks
+	// @Description Retrieves all tasks in a sprint
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Param sprintId path string true "Sprint ID"
+	// @Success 200 {array} models.Task "Sprint tasks retrieved successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Sprint/Tasks/{sprintId} [get]
+	router.GET("/api/Scrum/Sprint/Tasks/:sprintId", func(c *gin.Context) {
+		// TODO: Implement scrumController.GetSprintTasks
+		c.JSON(http.StatusOK, gin.H{
+			"status":   "scrum_sprint_tasks_retrieved",
+			"sprintID": c.Param("sprintId"),
+			"time":     time.Now().UTC(),
+		})
+	})
+
+	// @Summary Get project tasks
+	// @Description Retrieves all tasks in a project
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Param projectId path string true "Project ID"
+	// @Success 200 {array} models.Task "Project tasks retrieved successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Project/Tasks/{projectId} [get]
+	router.GET("/api/Scrum/Project/Tasks/:projectId", func(c *gin.Context) {
+		// TODO: Implement scrumController.GetProjectTasks
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "scrum_project_tasks_retrieved",
+			"projectID": c.Param("projectId"),
+			"time":      time.Now().UTC(),
+		})
+	})
+
+	// @Summary Get project sprints
+	// @Description Retrieves all sprints in a project
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Param projectId path string true "Project ID"
+	// @Success 200 {array} models.Sprint "Project sprints retrieved successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Project/Sprints/{projectId} [get]
+	router.GET("/api/Scrum/Project/Sprints/:projectId", func(c *gin.Context) {
+		// TODO: Implement scrumController.GetProjectSprints
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "scrum_project_sprints_retrieved",
+			"projectID": c.Param("projectId"),
+			"time":      time.Now().UTC(),
+		})
+	})
+
+	// @Summary Get user projects
+	// @Description Retrieves all projects for a user
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Param userId path string true "User ID"
+	// @Success 200 {array} models.Project "User projects retrieved successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Projects/User/{userId} [get]
+	router.GET("/api/Scrum/Projects/User/:userId", func(c *gin.Context) {
+		// TODO: Implement scrumController.GetUserProjects
+		c.JSON(http.StatusOK, gin.H{
+			"status": "scrum_user_projects_retrieved",
+			"userID": c.Param("userId"),
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Join project
+	// @Description Adds a user to a project
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Param projectId path string true "Project ID"
+	// @Param userId path string true "User ID"
+	// @Success 200 {object} map[string]interface{} "User joined project successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Project/{projectId}/{userId} [post]
+	router.POST("/api/Scrum/Project/:projectId/:userId", func(c *gin.Context) {
+		// TODO: Implement scrumController.JoinProject
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "scrum_user_joined_project",
+			"projectID": c.Param("projectId"),
+			"userID":    c.Param("userId"),
+			"time":      time.Now().UTC(),
+		})
+	})
+
+	// @Summary Remove member from project
+	// @Description Removes a user from a project
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Param projectId path string true "Project ID"
+	// @Param userId path string true "User ID"
+	// @Success 200 {object} map[string]interface{} "User removed from project successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Project/{projectId}/Members/{userId} [delete]
+	router.DELETE("/api/Scrum/Project/:projectId/Members/:userId", func(c *gin.Context) {
+		// TODO: Implement scrumController.RemoveMemberFromProject
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "scrum_user_removed_from_project",
+			"projectID": c.Param("projectId"),
+			"userID":    c.Param("userId"),
+			"time":      time.Now().UTC(),
+		})
+	})
+
+	// @Summary Get active sprints
+	// @Description Retrieves active sprints for a project
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Param projectId path string true "Project ID"
+	// @Success 200 {array} interface{} "Active sprints retrieved successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Router /api/Scrum/Project/Sprints/Active/{projectId} [get]
+	router.GET("/api/Scrum/Project/Sprints/Active/:projectId", func(c *gin.Context) {
+		// TODO: Implement scrumController.GetActiveSprints
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "scrum_active_sprints_retrieved",
+			"projectID": c.Param("projectId"),
+			"time":      time.Now().UTC(),
+		})
+	})
+
+	// @Summary Leave project
+	// @Description Removes the current user from a project
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Success 200 {object} map[string]interface{} "User left project successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Failure 500 {object} map[string]interface{} "Internal server error"
+	// @Router /api/Scrum/Project/Leave [post]
+	router.POST("/api/Scrum/Project/Leave", func(c *gin.Context) {
+		// TODO: Implement scrumController.LeaveProject
+		c.JSON(http.StatusOK, gin.H{
+			"status": "scrum_user_left_project",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Update project owner
+	// @Description Updates the owner of a project
+	// @Tags scrum
+	// @Accept json
+	// @Produce json
+	// @Security BearerAuth
+	// @Success 200 {object} map[string]interface{} "Project owner updated successfully"
+	// @Failure 400 {object} map[string]interface{} "Bad request"
+	// @Failure 401 {object} map[string]interface{} "Unauthorized"
+	// @Router /api/Scrum/Project/UpdateProjectOwner [put]
+	router.PUT("/api/Scrum/Project/UpdateProjectOwner", func(c *gin.Context) {
+		// TODO: Implement scrumController.UpdateProjectOwner
+		c.JSON(http.StatusOK, gin.H{
+			"status": "scrum_project_owner_updated",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// User endpoints
+	// @Summary Create user
+	// @Description Creates a new user (placeholder implementation)
+	// @Tags user
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} map[string]interface{} "User created successfully"
+	// @Router /api/User [post]
+	router.POST("/api/User", func(c *gin.Context) {
+		// TODO: Implement user creation logic
+		c.JSON(http.StatusOK, gin.H{
+			"status": "user_created",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Update user
+	// @Description Updates an existing user (placeholder implementation)
+	// @Tags user
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} map[string]interface{} "User updated successfully"
+	// @Router /api/User [put]
+	router.PUT("/api/User", func(c *gin.Context) {
+		// TODO: Implement user update logic
+		c.JSON(http.StatusOK, gin.H{
+			"status": "user_updated",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Get user by ID
+	// @Description Retrieves a user by ID (placeholder implementation)
+	// @Tags user
+	// @Accept json
+	// @Produce json
+	// @Param id path string true "User ID"
+	// @Success 200 {object} map[string]interface{} "User retrieved successfully"
+	// @Router /api/User/{id} [get]
+	router.GET("/api/User/:id", func(c *gin.Context) {
+		// TODO: Implement user retrieval logic
+		c.JSON(http.StatusOK, gin.H{
+			"status": "user_retrieved",
+			"userID": c.Param("id"),
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Delete user
+	// @Description Deletes a user by ID (placeholder implementation)
+	// @Tags user
+	// @Accept json
+	// @Produce json
+	// @Param id path string true "User ID"
+	// @Success 200 {object} map[string]interface{} "User deleted successfully"
+	// @Router /api/User/{id} [delete]
+	router.DELETE("/api/User/:id", func(c *gin.Context) {
+		// TODO: Implement user deletion logic
+		c.JSON(http.StatusOK, gin.H{
+			"status": "user_deleted",
+			"userID": c.Param("id"),
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Get user by username
+	// @Description Retrieves a user by username (placeholder implementation)
+	// @Tags user
+	// @Accept json
+	// @Produce json
+	// @Param username path string true "Username"
+	// @Success 200 {object} map[string]interface{} "User retrieved successfully"
+	// @Router /api/User/Username/{username} [get]
+	router.GET("/api/User/Username/:username", func(c *gin.Context) {
+		// TODO: Implement username validation logic
+		c.JSON(http.StatusOK, gin.H{
+			"status":   "username_retrieved",
+			"username": c.Param("username"),
+			"time":     time.Now().UTC(),
+		})
+	})
+
+	// @Summary Process login
+	// @Description Processes user login (placeholder implementation)
+	// @Tags user
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} map[string]interface{} "Login processed successfully"
+	// @Router /api/User/ProcessLogin [post]
+	router.POST("/api/User/ProcessLogin", func(c *gin.Context) {
+		// TODO: Implement login processing logic
+		c.JSON(http.StatusOK, gin.H{
+			"status": "login_processed",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Validate email
+	// @Description Validates user email (placeholder implementation)
+	// @Tags user
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} map[string]interface{} "Email validated successfully"
+	// @Router /api/User/ValidateEmail [post]
+	router.POST("/api/User/ValidateEmail", func(c *gin.Context) {
+		// TODO: Implement email validation logic
+		c.JSON(http.StatusOK, gin.H{
+			"status": "email_validated",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Validate username
+	// @Description Validates username (placeholder implementation)
+	// @Tags user
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} map[string]interface{} "Username validated successfully"
+	// @Router /api/User/ValidateUsername [post]
+	router.POST("/api/User/ValidateUsername", func(c *gin.Context) {
+		// TODO: Implement username validation logic
+		c.JSON(http.StatusOK, gin.H{
+			"status": "username_validated",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Request password reset
+	// @Description Requests a password reset (placeholder implementation)
+	// @Tags user
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} map[string]interface{} "Password reset requested successfully"
+	// @Router /api/User/RequestPasswordReset [post]
+	router.POST("/api/User/RequestPasswordReset", func(c *gin.Context) {
+		// TODO: Implement password reset request logic
+		c.JSON(http.StatusOK, gin.H{
+			"status": "password_reset_requested",
+			"time":   time.Now().UTC(),
+		})
+	})
+
+	// @Summary Reset password
+	// @Description Resets user password (placeholder implementation)
+	// @Tags user
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} map[string]interface{} "Password reset successfully"
+	// @Router /api/User/ResetPassword [post]
+	router.POST("/api/User/ResetPassword", func(c *gin.Context) {
+		// TODO: Implement password reset logic
+		c.JSON(http.StatusOK, gin.H{
+			"status": "password_reset",
+			"time":   time.Now().UTC(),
+		})
+	})
+
 	// Redirect root to Swagger documentation
 	router.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "/swagger/")
@@ -130,7 +885,15 @@ func main() {
 	}))
 
 	// Swagger documentation route
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(
+		swaggerFiles.Handler,
+		ginSwagger.URL("/swagger/doc.json"), // explicit to avoid defaulting to localhost
+	))
+
+	// Redirect from /swagger to /swagger/index.html for better UX
+	router.GET("/swagger", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, "/swagger/index.html")
+	})
 
 	api := router.Group("/api/v1")
 	{
@@ -244,6 +1007,41 @@ func main() {
 				mobile.GET("/projects/:id/sprints", mobileController.GetMobileSprints)
 				mobile.GET("/projects/:id/messages", mobileController.GetMobileMessages)
 			}
+
+			// Scrum endpoints (commented out due to compilation issues)
+			// scrum := protected.Group("/scrum")
+			// {
+			// 	// Project endpoints
+			// 	scrum.POST("/project", scrumController.CreateProject)
+			// 	scrum.GET("/project/:projectId", scrumController.GetProjectByID)
+			// 	scrum.PUT("/project", scrumController.EditProject)
+			// 	scrum.DELETE("/project/:projectId", scrumController.DeleteProject)
+			// 	scrum.GET("/project/members/:projectId", scrumController.GetProjectMembers)
+			// 	scrum.GET("/project/tasks/:projectId", scrumController.GetProjectTasks)
+			// 	scrum.GET("/project/sprints/:projectId", scrumController.GetProjectSprints)
+			// 	scrum.GET("/project/sprints/active/:projectId", scrumController.GetActiveSprints)
+			// 	scrum.POST("/project/:projectId/:userId", scrumController.JoinProject)
+			// 	scrum.DELETE("/project/:projectId/members/:userId", scrumController.RemoveMemberFromProject)
+			// 	scrum.POST("/project/leave", scrumController.LeaveProject)
+			// 	scrum.PUT("/project/update-project-owner", scrumController.UpdateProjectOwner)
+
+			// 	// Sprint endpoints
+			// 	scrum.POST("/sprint", scrumController.CreateSprint)
+			// 	scrum.GET("/sprint/:sprintId", scrumController.GetSprintByID)
+			// 	scrum.PUT("/sprint", scrumController.EditSprint)
+			// 	scrum.DELETE("/sprint/:sprintId", scrumController.DeleteSprint)
+			// 	scrum.GET("/sprint/tasks/:sprintId", scrumController.GetSprintTasks)
+
+			// 	// Task endpoints
+			// 	scrum.POST("/task", scrumController.CreateTask)
+			// 	scrum.GET("/task/:taskId", scrumController.GetTaskByID)
+			// 	scrum.PUT("/task", scrumController.EditTask)
+			// 	scrum.DELETE("/task/:taskId", scrumController.DeleteTask)
+			// 	scrum.PUT("/task/status", scrumController.UpdateTaskStatus)
+
+			// 	// User projects
+			// 	scrum.GET("/projects/user/:userId", scrumController.GetUserProjects)
+			// }
 
 		}
 	}

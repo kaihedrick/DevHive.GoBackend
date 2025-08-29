@@ -40,9 +40,10 @@ COPY --from=builder /app/devhive .
 COPY --from=builder /app/db/schema.sql ./db/schema.sql
 COPY --from=builder /app/config/ ./config/
 COPY --from=builder /app/static/ ./static/
+COPY --from=builder /app/docs/ ./docs/
 
 # Ensure required folders exist and set proper permissions
-RUN mkdir -p /app/db /app/config /app/static \
+RUN mkdir -p /app/db /app/config /app/static /app/docs \
     && chown -R appuser:appgroup /app
 
 # Switch to non-root user
