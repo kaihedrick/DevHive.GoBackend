@@ -1,0 +1,144 @@
+name: CI - Pull Request Checks
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+
+jobs:
+  quality:
+    name: Code Quality & Security
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Install dependencies
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Generate OpenAPI code
+        run: |
+          go install github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@latest
+          oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+
+      - name: Check generated code
+        run: |
+          if [ ! -f "internal/gen/openapi.gen.go" ]; then
+            echo "❌ OpenAPI code generation failed - missing generated file"
+            exit 1
+          fi
+          echo "✅ OpenAPI code generation successful"
+
+      - name: Run tests
+        run: |
+          go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Check test coverage
+        run: |
+          go tool cover -func=coverage.out
+          coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Test coverage: ${coverage}%"
+          if (( $(echo "$coverage < 70" | bc -l) )); then
+            echo "❌ Test coverage below 70% (current: ${coverage}%)"
+            exit 1
+          fi
+          echo "✅ Test coverage above 70%"
+
+      - name: Run linting
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+          golangci-lint run --timeout=5m
+
+      - name: Check formatting
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "❌ Code is not properly formatted. Please run 'gofmt -s -w .'"
+            gofmt -s -l .
+            exit 1
+          fi
+          echo "✅ Code formatting is correct"
+
+      - name: Check for common Go issues
+        run: |
+          go vet ./...
+
+      - name: Build application
+        run: |
+          go build -o bin/devhive ./cmd/server
+          echo "✅ Application builds successfully"
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          config: '.github/security/trivy-config.yaml'
+
+      - name: Upload security results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'Trivy Security Scan'
+
+  api-validation:
+    name: OpenAPI Specification Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenAPI tools
+        run: |
+          npm install -g @apidevtools/swagger-cli
+
+      - name: Validate OpenAPI specification
+        run: |
+          swagger-cli validate api/openapi.yaml
+          echo "✅ OpenAPI specification is valid"
+
+      - name: Check OpenAPI syntax
+        run: |
+          if ! swagger-cli validate api/openapi.yaml > /dev/null 2>&1; then
+            echo "❌ OpenAPI specification has syntax errors"
+            swagger-cli validate api/openapi.yaml
+            exit 1
+          fi
+          echo "✅ OpenAPI specification syntax is correct"
+
+  dependency-check:
+    name: Dependency Security Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Check for known vulnerabilities
+        run: |
+          go list -json -deps ./... | nancy sleuth -o json > nancy-results.json
+          echo "✅ Dependency security check completed"
+
+      - name: Upload dependency scan results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: dependency-scan-results
+          path: nancy-results.json

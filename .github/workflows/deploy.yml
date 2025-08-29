@@ -1,4 +1,4 @@
-name: Deploy to Fly.io
+name: DevHive Backend CI/CD
 
 on:
   push:
@@ -16,47 +16,8 @@ env:
   FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
 jobs:
-  deploy:
-    name: Deploy app
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.22'
-          cache: true
-
-      - name: Set up Flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Run tests
-        run: |
-          go mod download
-          go test -v ./...
-
-      - name: Build and deploy
-        run: |
-          go build -o devhive ./cmd/main.go
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            flyctl deploy --remote-only --app devhive-backend
-          else
-            flyctl deploy --remote-only --app devhive-backend-staging
-          fi
-
-      - name: Verify deployment
-        run: |
-          sleep 30
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            curl -f https://api.devhive.it.com/health || exit 1
-          else
-            curl -f https://devhive-backend-staging.fly.dev/health || exit 1
-
   test:
-    name: Run tests and security checks
+    name: Test and Quality Checks
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
 
@@ -69,9 +30,18 @@ jobs:
           go-version: '1.22'
           cache: true
 
-      - name: Run tests
+      - name: Install dependencies
         run: |
           go mod download
+          go mod verify
+
+      - name: Generate OpenAPI code
+        run: |
+          go install github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@latest
+          oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+
+      - name: Run tests
+        run: |
           go test -v ./...
 
       - name: Run linting
@@ -85,6 +55,10 @@ jobs:
             echo "Code is not properly formatted. Please run 'gofmt -s -w .'"
             exit 1
           fi
+
+      - name: Build application
+        run: |
+          go build -o bin/devhive ./cmd/server
 
       - name: Run Trivy vulnerability scanner (PR)
         uses: aquasecurity/trivy-action@master
@@ -102,6 +76,59 @@ jobs:
         with:
           sarif_file: 'trivy-results-pr.sarif'
           category: 'Trivy PR Security Scan'
+
+  deploy:
+    name: Deploy to Fly.io
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Set up Flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Install dependencies
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Generate OpenAPI code
+        run: |
+          go install github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@latest
+          oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+
+      - name: Run tests
+        run: |
+          go test -v ./...
+
+      - name: Build application
+        run: |
+          go build -o bin/devhive ./cmd/server
+
+      - name: Deploy to Fly.io
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            flyctl deploy --remote-only --app devhive-go-backend
+          else
+            flyctl deploy --remote-only --app devhive-backend-staging
+          fi
+
+      - name: Verify deployment
+        run: |
+          sleep 30
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            curl -f https://devhive-go-backend.fly.dev/health || exit 1
+          else
+            curl -f https://devhive-backend-staging.fly.dev/health || exit 1
+          fi
 
   security:
     name: Security scan
