@@ -55,12 +55,8 @@ func Register(r *gin.Engine) {
 		}
 	}
 
-	// Swagger documentation
-	r.StaticFile("/swagger/openapi.yaml", "./api/openapi.yaml")
-	r.StaticFile("/swagger/doc.json", "./api/openapi.yaml")
-
 	// Redirect root to API documentation
 	r.GET("/", func(c *gin.Context) {
-		c.Redirect(http.StatusMovedPermanently, "/swagger/openapi.yaml")
+		c.Redirect(http.StatusMovedPermanently, "/swagger/")
 	})
 }

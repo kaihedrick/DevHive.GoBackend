@@ -36,7 +36,7 @@ func NewDatabaseController(scriptsDir string) *DatabaseController {
 // @Success 200 {object} map[string]interface{} "Script executed successfully"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /database/execute-script [post]
+// @Router /api/Database/ExecuteScript [post]
 func (dc *DatabaseController) ExecuteScript(c *gin.Context) {
 	var request map[string]string
 	if err := c.ShouldBindJSON(&request); err != nil {

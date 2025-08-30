@@ -33,7 +33,7 @@ func NewMailController(mailService services.MailService) *MailController {
 // @Success 200 {object} models.EmailResponse "Email sent successfully"
 // @Failure 400 {object} models.EmailError "Bad request - invalid email request"
 // @Failure 500 {object} models.EmailError "Internal server error - email sending failed"
-// @Router /mail/send [post]
+// @Router /api/Mail/Send [post]
 func (mc *MailController) SendEmail(c *gin.Context) {
 	var emailRequest models.EmailRequest
 

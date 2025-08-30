@@ -71,7 +71,7 @@ type ResetPasswordRequest struct {
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 409 {object} map[string]string "Username or email already taken"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /auth/register [post]
+// @Router /api/auth/register [post]
 func Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -153,7 +153,7 @@ func Register(c *gin.Context) {
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 401 {object} map[string]string "Invalid credentials"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /auth/login [post]
+// @Router /api/auth/login [post]
 func Login(c *gin.Context) {
 	var req AuthRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -214,7 +214,7 @@ func Login(c *gin.Context) {
 // @Failure 401 {object} map[string]string "Invalid refresh token"
 // @Failure 404 {object} map[string]string "User not found"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /auth/refresh [post]
+// @Router /api/auth/refresh [post]
 func RefreshToken(c *gin.Context) {
 	var req struct {
 		RefreshToken string `json:"refresh_token" binding:"required"`
@@ -282,7 +282,7 @@ func RefreshToken(c *gin.Context) {
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 404 {object} map[string]string "User not found"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /auth/forgot-password [post]
+// @Router /api/auth/forgot-password [post]
 func ForgotPassword(c *gin.Context) {
 	var req ForgotPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -336,7 +336,7 @@ func ForgotPassword(c *gin.Context) {
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 401 {object} map[string]string "Invalid or expired token"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /auth/reset-password [post]
+// @Router /api/auth/reset-password [post]
 func ResetPassword(c *gin.Context) {
 	var req ResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

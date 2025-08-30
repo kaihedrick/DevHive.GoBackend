@@ -1,7 +1,0 @@
-package: genapi
-generate:
-  gin-server: true
-  types: true
-  strict-server: true
-  spec: true
-output: internal/gen/openapi.gen.go

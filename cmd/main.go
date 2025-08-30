@@ -39,7 +39,7 @@ import (
 // @license.url   http://www.apache.org/licenses/LICENSE-2.0.html
 
 // @host      devhive-go-backend.fly.dev
-// @BasePath  /api/v1
+// @BasePath  /api
 // @schemes   https
 
 // @securityDefinitions.apikey BearerAuth
@@ -79,14 +79,14 @@ func main() {
 	projectService := services.NewProjectService(repositories.NewProjectRepository(rawDB), repositories.NewUserRepository(rawDB))
 	sprintService := services.NewSprintService(db.GetDB())
 	// taskService := services.NewTaskService(repositories.NewTaskRepository(db.GetDB()))
-	messageService := services.NewMessageService(repositories.NewMessageRepository(db.GetDB()))
+	// messageService := services.NewMessageService(repositories.NewMessageRepository(db.GetDB()))
 	userService := services.NewUserService(repositories.NewUserRepository(rawDB))
 
-	// Initialize mobile controller
-	mobileController := controllers.NewMobileController(projectService, sprintService, messageService, userService)
+	// Initialize mobile controller (not used in current routing)
+	// mobileController := controllers.NewMobileController(projectService, sprintService, messageService, userService)
 
-	// Initialize scrum controller (commented out due to compilation issues)
-	// scrumController := controllers.NewScrumController(projectService, sprintService, taskService, userService)
+	// Initialize scrum controller
+	scrumController := controllers.NewScrumController(projectService, sprintService, nil, userService)
 
 	if os.Getenv("GIN_MODE") == "" {
 		gin.SetMode(gin.ReleaseMode)
@@ -884,10 +884,14 @@ func main() {
 		ws.AuthenticatedHandleConnections(ws.GlobalHub, w, r)
 	}))
 
+	// Expose the contract
+	// OpenAPI file not configured - skipping swagger endpoint
+	// router.StaticFile("/swagger/openapi.yaml", "./api/openapi.yaml")
+
 	// Swagger documentation route
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(
 		swaggerFiles.Handler,
-		ginSwagger.URL("/swagger/doc.json"), // explicit to avoid defaulting to localhost
+		ginSwagger.URL("/swagger/openapi.yaml"),
 	))
 
 	// Redirect from /swagger to /swagger/index.html for better UX
@@ -895,154 +899,83 @@ func main() {
 		c.Redirect(http.StatusMovedPermanently, "/swagger/index.html")
 	})
 
-	api := router.Group("/api/v1")
+	// Public routes (no authentication required)
+	auth := router.Group("/api/auth")
 	{
-		auth := api.Group("/auth")
+		auth.POST("/register", controllers.Register)
+		auth.POST("/login", controllers.Login)
+		auth.POST("/refresh", controllers.RefreshToken)
+		auth.POST("/forgot-password", controllers.ForgotPassword)
+		auth.POST("/reset-password", controllers.ResetPassword)
+	}
+
+	// Protected routes (authentication required)
+	protected := router.Group("/api")
+	protected.Use(middleware.AuthMiddleware())
+	{
+		// User Controller
+		user := protected.Group("/User")
 		{
-			auth.POST("/register", controllers.Register)
-			auth.POST("/login", controllers.Login)
-			auth.POST("/refresh", controllers.RefreshToken)
-			auth.POST("/forgot-password", controllers.ForgotPassword)
-			auth.POST("/reset-password", controllers.ResetPassword)
+			user.GET("/profile", controllers.GetUserProfile)
+			user.PUT("/profile", controllers.UpdateUserProfile)
+			user.POST("/avatar", controllers.UploadAvatar)
+			user.PUT("/activate/:id", controllers.ActivateUser)
+			user.PUT("/deactivate/:id", controllers.DeactivateUser)
+			user.GET("/search", controllers.SearchUsers)
 		}
 
-		protected := api.Group("/")
-		protected.Use(middleware.AuthMiddleware())
+		// Scrum Controller
+		scrum := protected.Group("/Scrum")
 		{
-			users := protected.Group("/users")
-			{
-				users.GET("/profile", controllers.GetUserProfile)
-				users.PUT("/profile", controllers.UpdateUserProfile)
-				users.POST("/avatar", controllers.UploadAvatar)
-				users.PUT("/activate/:id", controllers.ActivateUser)
-				users.PUT("/deactivate/:id", controllers.DeactivateUser)
-				users.GET("/search", controllers.SearchUsers)
-			}
+			// Project endpoints
+			scrum.POST("/Project", scrumController.CreateProject)
+			scrum.PUT("/Project", scrumController.EditProject)
+			scrum.GET("/Project/:projectId", scrumController.GetProjectByID)
+			scrum.DELETE("/Project/:projectId", scrumController.DeleteProject)
+			scrum.GET("/Project/Members/:projectId", scrumController.GetProjectMembers)
+			scrum.GET("/Project/Tasks/:projectId", scrumController.GetProjectTasks)
+			scrum.GET("/Project/Sprints/:projectId", scrumController.GetProjectSprints)
+			scrum.GET("/Project/Sprints/Active/:projectId", scrumController.GetActiveSprints)
+			scrum.POST("/Project/Leave", scrumController.LeaveProject)
+			scrum.PUT("/Project/UpdateProjectOwner", scrumController.UpdateProjectOwner)
+			scrum.POST("/Project/:projectId/:userId", scrumController.JoinProject)
+			scrum.DELETE("/Project/:projectId/Members/:userId", scrumController.RemoveMemberFromProject)
 
-			projects := protected.Group("/projects")
-			{
-				projects.GET("/", controllers.GetProjects)
-				projects.POST("/", controllers.CreateProject)
-				projects.GET(":id", controllers.GetProject)
-				projects.PUT(":id", controllers.UpdateProject)
-				projects.DELETE(":id", controllers.DeleteProject)
-				projects.POST(":id/members", controllers.AddProjectMember)
-				projects.GET(":id/members", controllers.GetProjectMembers)
-				projects.DELETE(":id/members/:userId", controllers.RemoveProjectMember)
-				projects.PUT(":id/members/:userId/role", controllers.UpdateProjectMemberRole)
-			}
+			// Sprint endpoints
+			scrum.POST("/Sprint", scrumController.CreateSprint)
+			scrum.PUT("/Sprint", scrumController.EditSprint)
+			scrum.GET("/Sprint/:sprintId", scrumController.GetSprintByID)
+			scrum.DELETE("/Sprint/:sprintId", scrumController.DeleteSprint)
+			scrum.GET("/Sprint/Tasks/:sprintId", scrumController.GetSprintTasks)
 
-			sprints := protected.Group("/projects/:id/sprints")
-			{
-				sprints.GET("/", controllers.GetSprints)
-				sprints.POST("/", controllers.CreateSprint)
-				sprints.GET(":sprintId", controllers.GetSprint)
-				sprints.PUT(":sprintId", controllers.UpdateSprint)
-				sprints.DELETE(":sprintId", controllers.DeleteSprint)
-				sprints.POST(":sprintId/start", controllers.StartSprint)
-				sprints.POST(":sprintId/complete", controllers.CompleteSprint)
-			}
+			// Task endpoints
+			scrum.POST("/Task", scrumController.CreateTask)
+			scrum.PUT("/Task", scrumController.EditTask)
+			scrum.GET("/Task/:taskId", scrumController.GetTaskByID)
+			scrum.DELETE("/Task/:taskId", scrumController.DeleteTask)
+			scrum.PUT("/Task/Status", scrumController.UpdateTaskStatus)
 
-			// Project-level task management
-			projectTasks := protected.Group("/projects/:id/tasks")
-			{
-				projectTasks.GET("/", controllers.GetTasks)
-				projectTasks.POST("/", controllers.CreateTask)
-				projectTasks.GET("/:taskId", controllers.GetTask)
-				projectTasks.PUT("/:taskId", controllers.UpdateTask)
-				projectTasks.DELETE("/:taskId", controllers.DeleteTask)
-				projectTasks.POST("/:taskId/assign", controllers.AssignTask)
-				projectTasks.PATCH("/:taskId/status", controllers.UpdateTaskStatus)
-			}
+			// User projects
+			scrum.GET("/Projects/User/:userId", scrumController.GetUserProjects)
+		}
 
-			// Sprint-level task management
-			tasks := protected.Group("/projects/:id/sprints/:sprintId/tasks")
-			{
-				tasks.GET("/", controllers.GetTasksBySprint)
-				tasks.POST("/", controllers.CreateTask)
-				tasks.GET("/:taskId", controllers.GetTask)
-				tasks.PUT("/:taskId", controllers.UpdateTask)
-				tasks.DELETE("/:taskId", controllers.DeleteTask)
-				tasks.POST("/:taskId/assign", controllers.AssignTask)
-				tasks.PATCH("/:taskId/status", controllers.UpdateTaskStatus)
-			}
+		// Message Controller
+		message := protected.Group("/Message")
+		{
+			message.POST("/Send", controllers.CreateMessage)
+			message.GET("/Retrieve/:fromUserID/:toUserID/:projectID", controllers.GetMessages)
+		}
 
-			messages := protected.Group("/projects/:id/messages")
-			{
-				messages.GET("/", controllers.GetMessages)
-				messages.POST("/", controllers.CreateMessage)
-				messages.PUT("/:messageId", controllers.UpdateMessage)
-				messages.DELETE("/:messageId", controllers.DeleteMessage)
-			}
+		// Mail Controller
+		mail := protected.Group("/Mail")
+		{
+			mail.POST("/Send", mailController.SendEmail)
+		}
 
-			database := protected.Group("/database")
-			{
-				database.POST("/execute-script", dbController.ExecuteScript)
-				database.GET("/status", dbController.GetDatabaseStatus)
-				database.GET("/scripts", dbController.ListScripts)
-			}
-
-			mail := protected.Group("/mail")
-			{
-				mail.POST("/send", mailController.SendEmail)
-			}
-
-			admin := protected.Group("/admin")
-			{
-				featureFlags := admin.Group("/feature-flags")
-				{
-					featureFlags.GET("/", controllers.GetFeatureFlags)
-					featureFlags.GET("/:key", controllers.GetFeatureFlag)
-					featureFlags.POST("/", controllers.CreateFeatureFlag)
-					featureFlags.PUT("/:key", controllers.UpdateFeatureFlag)
-					featureFlags.DELETE("/:key", controllers.DeleteFeatureFlag)
-					featureFlags.POST("/bulk-update", controllers.BulkUpdateFeatureFlags)
-				}
-			}
-
-			mobile := protected.Group("/mobile/v2")
-			{
-				mobile.GET("/projects", mobileController.GetMobileProjects)
-				mobile.GET("/projects/:id", mobileController.GetMobileProject)
-				mobile.GET("/projects/:id/sprints", mobileController.GetMobileSprints)
-				mobile.GET("/projects/:id/messages", mobileController.GetMobileMessages)
-			}
-
-			// Scrum endpoints (commented out due to compilation issues)
-			// scrum := protected.Group("/scrum")
-			// {
-			// 	// Project endpoints
-			// 	scrum.POST("/project", scrumController.CreateProject)
-			// 	scrum.GET("/project/:projectId", scrumController.GetProjectByID)
-			// 	scrum.PUT("/project", scrumController.EditProject)
-			// 	scrum.DELETE("/project/:projectId", scrumController.DeleteProject)
-			// 	scrum.GET("/project/members/:projectId", scrumController.GetProjectMembers)
-			// 	scrum.GET("/project/tasks/:projectId", scrumController.GetProjectTasks)
-			// 	scrum.GET("/project/sprints/:projectId", scrumController.GetProjectSprints)
-			// 	scrum.GET("/project/sprints/active/:projectId", scrumController.GetActiveSprints)
-			// 	scrum.POST("/project/:projectId/:userId", scrumController.JoinProject)
-			// 	scrum.DELETE("/project/:projectId/members/:userId", scrumController.RemoveMemberFromProject)
-			// 	scrum.POST("/project/leave", scrumController.LeaveProject)
-			// 	scrum.PUT("/project/update-project-owner", scrumController.UpdateProjectOwner)
-
-			// 	// Sprint endpoints
-			// 	scrum.POST("/sprint", scrumController.CreateSprint)
-			// 	scrum.GET("/sprint/:sprintId", scrumController.GetSprintByID)
-			// 	scrum.PUT("/sprint", scrumController.EditSprint)
-			// 	scrum.DELETE("/sprint/:sprintId", scrumController.DeleteSprint)
-			// 	scrum.GET("/sprint/tasks/:sprintId", scrumController.GetSprintTasks)
-
-			// 	// Task endpoints
-			// 	scrum.POST("/task", scrumController.CreateTask)
-			// 	scrum.GET("/task/:taskId", scrumController.GetTaskByID)
-			// 	scrum.PUT("/task", scrumController.EditTask)
-			// 	scrum.DELETE("/task/:taskId", scrumController.DeleteTask)
-			// 	scrum.PUT("/task/status", scrumController.UpdateTaskStatus)
-
-			// 	// User projects
-			// 	scrum.GET("/projects/user/:userId", scrumController.GetUserProjects)
-			// }
-
+		// Database Controller
+		database := protected.Group("/Database")
+		{
+			database.POST("/ExecuteScript", dbController.ExecuteScript)
 		}
 	}
 

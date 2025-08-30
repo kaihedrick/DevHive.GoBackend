@@ -13,7 +13,7 @@ This document outlines the refactoring of the DevHive Go backend from a monolith
 ### After (Clean Architecture)
 - **Modular structure** following Go best practices
 - **OpenAPI specification** as the single source of truth
-- **Generated Go types** and server stubs using oapi-codegen
+- **Generated Go types** and server stubs (OpenAPI codegen not currently configured)
 - **Separation of concerns** with clear layers
 
 ## New Directory Structure
@@ -22,7 +22,7 @@ This document outlines the refactoring of the DevHive Go backend from a monolith
 DevHive.GoBackend/
 ├─ api/                           # API contract & codegen
 │  ├─ openapi.yaml               # OpenAPI specification
-│  └─ oapi-codegen.yaml          # Code generation config
+│  └─ (OpenAPI codegen not currently configured)
 ├─ cmd/
 │  └─ server/
 │     └─ main.go                 # Clean, minimal main (30 lines)
@@ -49,7 +49,7 @@ DevHive.GoBackend/
 ## Key Benefits
 
 ### 1. **Contract-First API Design**
-- `api/openapi.yaml` serves as the single source of truth
+- OpenAPI specification (not currently configured)
 - All endpoints, schemas, and security defined declaratively
 - Easy to generate client SDKs and documentation
 
@@ -143,7 +143,7 @@ The refactored structure is fully compatible with:
 ## Contributing
 
 When adding new features:
-1. **Update** `api/openapi.yaml` with new endpoints/schemas
+1. **Update** OpenAPI specification (not currently configured)
 2. **Generate** code with `make oapi`
 3. **Implement** controllers, services, and repositories
 4. **Register** routes in `internal/router/router.go`

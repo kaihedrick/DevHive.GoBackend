@@ -22,7 +22,7 @@ import (
 // @Success 200 {object} map[string]interface{} "User profile retrieved successfully"
 // @Failure 401 {object} map[string]string "User not authenticated"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /users/profile [get]
+// @Router /api/User/profile [get]
 func GetUserProfile(c *gin.Context) {
 	userID := middleware.GetCurrentUserID(c)
 	if userID == uuid.Nil {
@@ -53,7 +53,7 @@ func GetUserProfile(c *gin.Context) {
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 401 {object} map[string]string "User not authenticated"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /users/profile [put]
+// @Router /api/User/profile [put]
 func UpdateUserProfile(c *gin.Context) {
 	userID := middleware.GetCurrentUserID(c)
 	if userID == uuid.Nil {
@@ -92,7 +92,7 @@ func UpdateUserProfile(c *gin.Context) {
 // @Failure 400 {object} map[string]string "Bad request - invalid file or size"
 // @Failure 401 {object} map[string]string "User not authenticated"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /users/avatar [post]
+// @Router /api/User/avatar [post]
 func UploadAvatar(c *gin.Context) {
 	userID := middleware.GetCurrentUserID(c)
 	if userID == uuid.Nil {
@@ -167,7 +167,7 @@ func UploadAvatar(c *gin.Context) {
 // @Failure 403 {object} map[string]string "Insufficient permissions"
 // @Failure 404 {object} map[string]string "User not found"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /users/{id}/activate [put]
+// @Router /api/User/activate/{id} [put]
 func ActivateUser(c *gin.Context) {
 	userID := middleware.GetCurrentUserID(c)
 	if userID == uuid.Nil {
@@ -226,7 +226,7 @@ func ActivateUser(c *gin.Context) {
 // @Failure 403 {object} map[string]string "Insufficient permissions"
 // @Failure 404 {object} map[string]string "User not found"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /users/{id}/deactivate [put]
+// @Router /api/User/deactivate/{id} [put]
 func DeactivateUser(c *gin.Context) {
 	userID := middleware.GetCurrentUserID(c)
 	if userID == uuid.Nil {
@@ -289,7 +289,7 @@ func DeactivateUser(c *gin.Context) {
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 401 {object} map[string]string "Unauthorized"
 // @Failure 500 {object} map[string]string "Internal server error"
-// @Router /users/search [get]
+// @Router /api/User/search [get]
 func SearchUsers(c *gin.Context) {
 	userID := middleware.GetCurrentUserID(c)
 	if userID == uuid.Nil {

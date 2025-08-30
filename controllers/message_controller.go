@@ -25,7 +25,7 @@ import (
 // @Failure 400 {object} models.ErrorResponse "Bad request"
 // @Failure 401 {object} models.ErrorResponse "Unauthorized"
 // @Failure 500 {object} models.ErrorResponse "Internal server error"
-// @Router /projects/{id}/messages [get]
+// @Router /api/Message/Retrieve/{fromUserID}/{toUserID}/{projectID} [get]
 func GetMessages(c *gin.Context) {
 	userID := GetCurrentUserID(c)
 	if userID == uuid.Nil {
@@ -98,7 +98,7 @@ func GetMessages(c *gin.Context) {
 // @Failure 400 {object} models.ErrorResponse "Bad request"
 // @Failure 401 {object} models.ErrorResponse "Unauthorized"
 // @Failure 500 {object} models.ErrorResponse "Internal server error"
-// @Router /projects/{id}/messages [post]
+// @Router /api/Message/Send [post]
 func CreateMessage(c *gin.Context) {
 	userID := GetCurrentUserID(c)
 	if userID == uuid.Nil {
