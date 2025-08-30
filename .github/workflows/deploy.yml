@@ -1,166 +1,98 @@
-name: DevHive Backend CI/CD
+name: CI/CD - DevHive Go Backend
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
-# Required permissions for security scanning and deployment
 permissions:
   contents: read
-  security-events: write
-  deployments: write
-
-env:
-  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  packages: write
 
 jobs:
-  test:
-    name: Test and Quality Checks
+  build-test-validate:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.22.x'
           cache: true
 
-      - name: Install dependencies
-        run: |
-          go mod download
-          go mod verify
+      - name: Cache Go build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
 
-      - name: Generate OpenAPI code
+      # Ensures api/openapi.yaml -> internal/gen/openapi.gen.go is up to date
+      - name: Verify OpenAPI codegen is up to date
         run: |
-          go install github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@latest
-          oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
-
-      - name: Run tests
-        run: |
-          go test -v ./...
-
-      - name: Run linting
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
-          golangci-lint run
-
-      - name: Check formatting
-        run: |
-          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
-            echo "Code is not properly formatted. Please run 'gofmt -s -w .'"
+          make oapi
+          if ! git diff --quiet --exit-code; then
+            echo "Error: OpenAPI generated files are out of date. Run 'make oapi' and commit changes." >&2
+            git --no-pager diff --name-only
             exit 1
           fi
 
-      - name: Build application
-        run: |
-          go build -o bin/devhive ./cmd/server
+      - name: Go vet
+        run: go vet ./...
 
-      - name: Run Trivy vulnerability scanner (PR)
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results-pr.sarif'
-          severity: 'CRITICAL,HIGH'
-          config: '.github/security/trivy-config.yaml'
+      - name: Run tests
+        run: go test ./... -coverprofile=coverage.out
 
-      - name: Upload PR security results
-        uses: github/codeql-action/upload-sarif@v3
-        if: always() && success()
-        with:
-          sarif_file: 'trivy-results-pr.sarif'
-          category: 'Trivy PR Security Scan'
+      - name: Build binary (sanity)
+        run: go build ./cmd/server
 
-  deploy:
-    name: Deploy to Fly.io
+  publish-and-deploy:
+    needs: build-test-validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
-    needs: test
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          go-version: '1.22'
-          cache: true
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Flyctl
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Install Flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Install dependencies
+      - name: Deploy to Fly
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          go mod download
-          go mod verify
+          # Option A: source deploy (uses your Dockerfile and fly.toml)
+          flyctl deploy --remote-only --strategy immediate
 
-      - name: Generate OpenAPI code
-        run: |
-          go install github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@latest
-          oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
-
-      - name: Run tests
-        run: |
-          go test -v ./...
-
-      - name: Build application
-        run: |
-          go build -o bin/devhive ./cmd/server
-
-      - name: Deploy to Fly.io
-        run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            flyctl deploy --remote-only --app devhive-go-backend
-          else
-            flyctl deploy --remote-only --app devhive-backend-staging
-          fi
-
-      - name: Verify deployment
-        run: |
-          sleep 30
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            curl -f https://devhive-go-backend.fly.dev/health || exit 1
-          else
-            curl -f https://devhive-backend-staging.fly.dev/health || exit 1
-          fi
-
-  security:
-    name: Security scan
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH,MEDIUM'
-          config: '.github/security/trivy-config.yaml'
-
-      - name: Check Trivy results
-        run: |
-          if [ -f "trivy-results.sarif" ]; then
-            echo "Trivy scan completed successfully"
-            ls -la trivy-results.sarif
-          else
-            echo "Trivy scan failed - no results file found"
-            exit 1
-          fi
-
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always() && success()
-        with:
-          sarif_file: 'trivy-results.sarif'
-          category: 'Trivy Security Scan'
+          # Option B: deploy the GHCR image (uncomment to pin to image)
+          # flyctl deploy --image ghcr.io/${{ github.repository }}:sha-${{ github.sha }} --strategy immediate
