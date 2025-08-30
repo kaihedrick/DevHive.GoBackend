@@ -102,7 +102,7 @@ func TestSendEmail_InvalidRequest(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 	assert.Equal(t, "Invalid email request", response.Error)
-	assert.Equal(t, "MISSING_FIELDS", response.Code)
+	assert.Equal(t, "INVALID_REQUEST", response.Code)
 }
 
 func TestSendEmail_ServiceFailure(t *testing.T) {
