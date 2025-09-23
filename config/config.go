@@ -72,6 +72,14 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
+// GetEnv returns the environment variable value for the provided key or the
+// given defaultValue when the variable is not set. This helper is exported so
+// that other packages (for example, the migration utilities) can leverage the
+// same centralized environment loading logic without duplicating it.
+func GetEnv(key, defaultValue string) string {
+	return getEnv(key, defaultValue)
+}
+
 // Helper function to get environment variable as int with default
 func getEnvAsInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
