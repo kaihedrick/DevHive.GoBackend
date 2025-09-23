@@ -19,7 +19,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.22'
+          go-version-file: go.mod
           cache: true
 
       - name: Install dependencies
@@ -50,7 +50,8 @@ jobs:
 
       - name: Run linting
         run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | \
+            sh -s -- -b "$(go env GOPATH)/bin" v1.61.0
           golangci-lint run --timeout=5m
 
       - name: Check formatting
@@ -114,7 +115,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.22'
+          go-version-file: go.mod
           cache: true
 
       - name: Install Nancy dependency auditor
