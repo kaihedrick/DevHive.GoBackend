@@ -1,57 +1,95 @@
-# ---- Config ----
-PORT ?= 8080
+.PHONY: run gen db-up db-down migrate-up migrate-down test clean build docker-build docker-run
 
-# ---- Targets ----
-.PHONY: run build clean deps test test-coverage fmt lint dev
+# Default target
+all: gen db-up migrate-up run
 
-# OpenAPI codegen not configured - skipping
-oapi:
-	@echo "⚠️ OpenAPI codegen not configured - skipping"
-	@echo "✅ Continuing with build process"
-
-# CI-friendly: skip OpenAPI check
-check-oapi:
-	@echo "⚠️ OpenAPI check skipped - not configured"
-	@echo "✅ Continuing with build process"
-
-# Run the server locally
+# Run the application
 run:
-	PORT=$(PORT) go run ./cmd/server
+	go run ./cmd/devhive-api
 
-# Build the application
-build:
-	go build -o bin/devhive ./cmd/server
+# Generate sqlc code
+gen:
+	sqlc generate
 
-# Clean build artifacts
-clean:
-	rm -rf bin/
-	go clean
+# Database operations
+db-up:
+	docker compose up -d postgres
 
-# Install dependencies
-deps:
-	go mod tidy
-	go mod download
+db-down:
+	docker compose down postgres
 
-# Run tests
+# Migration operations
+migrate-up:
+	go run ./cmd/devhive-api migrate
+
+migrate-down:
+	go run ./cmd/devhive-api migrate down
+
+# Test
 test:
 	go test ./...
 
-# Run tests with coverage
-test-coverage:
-	go test -coverprofile=coverage.out ./...
-	go tool cover -html=coverage.out
+# Clean
+clean:
+	go clean
+	docker compose down -v
+
+# Build
+build:
+	go build -o bin/devhive-api ./cmd/devhive-api
+
+# Docker operations
+docker-build:
+	docker compose build
+
+docker-run:
+	docker compose up
+
+# Development setup
+dev-setup: gen db-up
+	@echo "Waiting for database to be ready..."
+	@sleep 5
+	@echo "Development environment ready!"
+
+# Production build
+prod-build:
+	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bin/devhive-api ./cmd/devhive-api
+
+# Install dependencies
+deps:
+	go mod download
+	go mod tidy
 
 # Format code
 fmt:
 	go fmt ./...
 
-# Lint code (auto-installs golangci-lint if missing)
+# Lint code
 lint:
-	@if ! command -v golangci-lint >/dev/null 2>&1; then \
-	  echo "Installing golangci-lint..."; \
-	  go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.60.3; \
-	fi
 	golangci-lint run
 
-# Generate and run
-dev: oapi run
+# Security scan
+security:
+	gosec ./...
+
+# Help
+help:
+	@echo "Available targets:"
+	@echo "  run          - Run the application"
+	@echo "  gen          - Generate sqlc code"
+	@echo "  db-up        - Start PostgreSQL database"
+	@echo "  db-down      - Stop PostgreSQL database"
+	@echo "  migrate-up   - Run database migrations"
+	@echo "  migrate-down - Rollback database migrations"
+	@echo "  test         - Run tests"
+	@echo "  clean        - Clean build artifacts and containers"
+	@echo "  build        - Build the application"
+	@echo "  docker-build - Build Docker image"
+	@echo "  docker-run   - Run with Docker Compose"
+	@echo "  dev-setup    - Setup development environment"
+	@echo "  prod-build   - Build for production"
+	@echo "  deps         - Download and tidy dependencies"
+	@echo "  fmt          - Format code"
+	@echo "  lint         - Lint code"
+	@echo "  security     - Run security scan"
+	@echo "  help         - Show this help message"

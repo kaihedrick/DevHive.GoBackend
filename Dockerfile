@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# Build stage
 FROM golang:1.23-alpine AS builder
 
 # Install build dependencies
@@ -7,58 +7,49 @@ RUN apk add --no-cache git ca-certificates tzdata
 # Set working directory
 WORKDIR /app
 
-# Copy go mod files first for better layer caching
+# Copy go mod files
 COPY go.mod go.sum ./
+
+# Download dependencies
 RUN go mod download
 
 # Copy source code
 COPY . .
 
-# Build the application with optimizations for production
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -a -installsuffix cgo \
-    -ldflags="-w -s -extldflags '-static'" \
-    -o devhive \
-    ./cmd/main.go
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/devhive-api
 
-# Final runtime image
-FROM alpine:3.19
+# Final stage
+FROM alpine:latest
 
-# Install runtime dependencies
-RUN apk --no-cache add \
-    ca-certificates \
-    tzdata \
-    && addgroup -g 1001 -S appgroup \
-    && adduser -u 1001 -S appuser -G appgroup
+# Install ca-certificates for HTTPS requests
+RUN apk --no-cache add ca-certificates tzdata
 
+# Create non-root user
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup
+
+# Set working directory
 WORKDIR /app
 
-# Copy the built Go binary
-COPY --from=builder /app/devhive .
+# Copy binary from builder stage
+COPY --from=builder /app/main .
 
-# Copy essential files for all endpoints
-COPY --from=builder /app/db/schema.sql ./db/schema.sql
-COPY --from=builder /app/config/ ./config/
-COPY --from=builder /app/static/ ./static/
-COPY --from=builder /app/docs/ ./docs/
+# Copy migrations
+COPY --from=builder /app/cmd/devhive-api/migrations ./migrations
 
-# Ensure required folders exist and set proper permissions
-RUN mkdir -p /app/db /app/config /app/static /app/docs \
-    && chown -R appuser:appgroup /app
+# Change ownership to non-root user
+RUN chown -R appuser:appgroup /app
 
 # Switch to non-root user
 USER appuser
 
-# Expose the port your application runs on
+# Expose port
 EXPOSE 8080
 
-# Health check to ensure all endpoints are accessible
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
-
-# Set environment variables for production
-ENV GIN_MODE=release
-ENV PORT=8080
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/healthz || exit 1
 
 # Run the application
-ENTRYPOINT ["./devhive"]
+CMD ["./main"]
