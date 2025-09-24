@@ -1,9 +1,13 @@
-name: Deploy - Production Deployment
+name: Deploy - Production Deployment (Fallback)
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
+    inputs:
+      use_cache:
+        description: 'Use Docker build cache'
+        required: false
+        default: 'false'
+        type: boolean
 
 permissions:
   contents: read
@@ -57,11 +61,9 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            image=moby/buildkit:latest
 
-      - name: Build and push Docker image
+      - name: Build and push Docker image (with cache)
+        if: ${{ inputs.use_cache == 'true' }}
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -71,6 +73,16 @@ jobs:
           platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Build and push Docker image (no cache)
+        if: ${{ inputs.use_cache != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
 
       - name: Install Flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
