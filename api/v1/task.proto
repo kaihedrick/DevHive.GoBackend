@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package devhive.v1;
+
+option go_package = "devhive-backend/api/v1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// Task service definition
+service TaskService {
+  rpc GetTask(GetTaskRequest) returns (Task);
+  rpc CreateTask(CreateTaskRequest) returns (Task);
+  rpc UpdateTask(UpdateTaskRequest) returns (Task);
+  rpc DeleteTask(DeleteTaskRequest) returns (google.protobuf.Empty);
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+  rpc AssignTask(AssignTaskRequest) returns (google.protobuf.Empty);
+  rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (google.protobuf.Empty);
+}
+
+// Task message
+message Task {
+  string id = 1;
+  string project_id = 2;
+  string sprint_id = 3;
+  string assignee_id = 4;
+  string title = 5;
+  string description = 6;
+  int32 status = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+// Request messages
+message GetTaskRequest {
+  string id = 1;
+}
+
+message CreateTaskRequest {
+  string project_id = 1;
+  string sprint_id = 2;
+  string title = 3;
+  string description = 4;
+}
+
+message UpdateTaskRequest {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  int32 status = 4;
+}
+
+message DeleteTaskRequest {
+  string id = 1;
+}
+
+message ListTasksRequest {
+  string project_id = 1;
+  string sprint_id = 2;
+  string assignee_id = 3;
+  int32 status = 4;
+  int32 limit = 5;
+  int32 offset = 6;
+}
+
+message ListTasksResponse {
+  repeated Task tasks = 1;
+  int32 total = 2;
+}
+
+message AssignTaskRequest {
+  string task_id = 1;
+  string assignee_id = 2;
+}
+
+message UpdateTaskStatusRequest {
+  string task_id = 1;
+  int32 status = 2;
+}

@@ -48,8 +48,8 @@ docker-compose up -d
 # Test health endpoint
 curl http://localhost:8080/health
 
-# Test Swagger documentation
-open http://localhost:8080/swagger/
+# Test gRPC server
+grpcurl -plaintext localhost:8081 list
 
 # Test new project-level task endpoints
 curl -X GET http://localhost:8080/api/v1/projects/{projectId}/tasks \
@@ -291,7 +291,7 @@ docker-compose ps
 
 ### **Health Endpoints**
 - **Application Health**: `http://localhost:8080/health`
-- **Swagger Documentation**: `http://localhost:8080/swagger/`
+- **gRPC Server**: `localhost:8081` (use grpcurl to test)
 - **WebSocket**: `ws://localhost:8080/ws`
 
 ### **Enhanced Health Monitoring**

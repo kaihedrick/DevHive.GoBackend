@@ -13,6 +13,7 @@ import (
 
 	"devhive-backend/db"
 	"devhive-backend/internal/config"
+	"devhive-backend/internal/grpc"
 	"devhive-backend/internal/http/router"
 	"devhive-backend/internal/repo"
 
@@ -66,7 +67,10 @@ func main() {
 	// Setup router
 	r := router.Setup(cfg, queries, database)
 
-	// Start server with graceful shutdown
+	// Setup gRPC server
+	grpcServer := grpc.New(cfg, queries)
+
+	// Start HTTP server with graceful shutdown
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      r,
@@ -75,23 +79,35 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	// Start gRPC server in a goroutine
+	go func() {
+		if err := grpcServer.Start(cfg.GRPCPort); err != nil {
+			log.Printf("gRPC server failed: %v", err)
+		}
+	}()
+
 	// Graceful shutdown handler
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		<-shutdown
-		log.Println("Shutting down server...")
+		log.Println("Shutting down servers...")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
+		// Shutdown HTTP server
 		if err := server.Shutdown(ctx); err != nil {
-			log.Printf("Server shutdown failed: %v", err)
+			log.Printf("HTTP server shutdown failed: %v", err)
 		}
+
+		// Shutdown gRPC server
+		grpcServer.Stop()
 	}()
 
-	log.Printf("Server started successfully on port %s", cfg.Port)
+	log.Printf("HTTP server started successfully on port %s", cfg.Port)
+	log.Printf("gRPC server started successfully on port 8081")
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal("Server failed:", err)
 	}

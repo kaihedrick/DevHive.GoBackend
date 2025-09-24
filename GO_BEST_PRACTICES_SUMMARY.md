@@ -245,7 +245,7 @@ make gen
 ## 🚀 Next Steps
 
 1. **Add Tests**: Create comprehensive test suite
-2. **API Documentation**: Add Swagger/OpenAPI documentation
+2. **API Documentation**: Add gRPC documentation
 3. **Monitoring**: Add Prometheus metrics
 4. **Logging**: Implement structured logging with JSON
 5. **Caching**: Add Redis for session management

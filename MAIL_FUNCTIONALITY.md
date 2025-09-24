@@ -28,7 +28,7 @@ The mail functionality allows the application to send emails through a configura
 3. **`controllers/mail.go`**: HTTP controller
    - RESTful endpoint for sending emails
    - Input validation and error handling
-   - Swagger documentation
+   - gRPC documentation
 
 ### API Endpoint
 

@@ -94,7 +94,7 @@ run_dev() {
     docker-compose -f $COMPOSE_FILE up -d
     print_success "Development environment started"
     print_status "Application available at: http://localhost:8080"
-    print_status "Swagger docs at: http://localhost:8080/swagger/"
+    print_status "gRPC server at: localhost:8081"
     print_status "Health check at: http://localhost:8080/health"
 }
 
@@ -160,12 +160,12 @@ test_endpoints() {
         return 1
     fi
     
-    # Test Swagger endpoint
-    print_status "Testing Swagger endpoint..."
-    if curl -f http://localhost:8080/swagger/ > /dev/null 2>&1; then
-        print_success "Swagger endpoint: OK"
+    # Test gRPC server
+    print_status "Testing gRPC server..."
+    if netstat -an | grep :8081 > /dev/null 2>&1; then
+        print_success "gRPC server: OK"
     else
-        print_warning "Swagger endpoint: FAILED (may not be critical)"
+        print_warning "gRPC server: FAILED (may not be critical)"
     fi
     
     print_success "All endpoint tests completed"

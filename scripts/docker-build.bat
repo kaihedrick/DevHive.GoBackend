@@ -92,7 +92,7 @@ docker-compose -f %COMPOSE_FILE% up -d
 if %ERRORLEVEL% EQU 0 (
     call :print_success "Development environment started"
     call :print_status "Application available at: http://localhost:8080"
-    call :print_status "Swagger docs at: http://localhost:8080/swagger/"
+    call :print_status "gRPC server at: localhost:8081"
     call :print_status "Health check at: http://localhost:8080/health"
 ) else (
     call :print_error "Failed to start development environment"
@@ -168,13 +168,13 @@ if %ERRORLEVEL% EQU 0 (
     exit /b 1
 )
 
-REM Test Swagger endpoint
-call :print_status "Testing Swagger endpoint..."
-curl -f http://localhost:8080/swagger/ >nul 2>&1
+REM Test gRPC server
+call :print_status "Testing gRPC server..."
+netstat -an | findstr :8081 >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
-    call :print_success "Swagger endpoint: OK"
+    call :print_success "gRPC server: OK"
 ) else (
-    call :print_warning "Swagger endpoint: FAILED (may not be critical)"
+    call :print_warning "gRPC server: FAILED (may not be critical)"
 )
 
 call :print_success "All endpoint tests completed"

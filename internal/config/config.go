@@ -12,6 +12,7 @@ import (
 // Config holds all configuration for the application
 type Config struct {
 	Port        string
+	GRPCPort    string
 	DatabaseURL string
 	JWT         JWTConfig
 	CORS        CORSConfig
@@ -46,6 +47,7 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		Port:        getEnv("PORT", "8080"),
+		GRPCPort:    getEnv("GRPC_PORT", "8081"),
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://devhive:devhive@localhost:5432/devhive?sslmode=disable"),
 		JWT: JWTConfig{
 			SigningKey: getEnv("JWT_SIGNING_KEY", "your-super-secret-jwt-key-change-in-production"),

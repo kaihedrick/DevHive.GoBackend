@@ -41,7 +41,7 @@ help:
 	@echo "  help         - Show this help message"
 
 ## dev-setup: Setup development environment
-dev-setup: deps gen db-up
+dev-setup: deps gen gen-grpc db-up
 	@echo "🚀 Setting up development environment..."
 	@echo "Waiting for database to be ready..."
 	@sleep 5
@@ -57,6 +57,11 @@ run:
 gen:
 	@echo "🔧 Generating sqlc code..."
 	sqlc generate
+
+## gen-grpc: Generate gRPC code
+gen-grpc:
+	@echo "🔧 Generating gRPC code..."
+	@if exist scripts\generate-grpc.bat (scripts\generate-grpc.bat) else (scripts/generate-grpc.sh)
 
 ## db-up: Start PostgreSQL database
 db-up:

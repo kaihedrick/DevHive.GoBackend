@@ -2,7 +2,10 @@
 FROM golang:1.23-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata sqlc
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Install sqlc
+RUN go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 
 # Set working directory
 WORKDIR /app
@@ -47,8 +50,8 @@ RUN chown -R appuser:appgroup /app
 # Switch to non-root user
 USER appuser
 
-# Expose port
-EXPOSE 8080
+# Expose ports
+EXPOSE 8080 8081
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

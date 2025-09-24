@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -8,11 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"devhive-backend/config"
-
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 )
 
 // maskPassword masks the password in connection strings for logging
@@ -34,10 +33,8 @@ func maskPassword(connStr string) string {
 	return connStr
 }
 
-var DB *gorm.DB
-
-// InitDB initializes the PostgreSQL database connection using GORM
-func InitDB() error {
+// InitDB initializes the PostgreSQL database connection using pgx
+func InitDB() (*sql.DB, error) {
 	// First try to use the Fly.io DATABASE_URL (standard format)
 	dbURL := os.Getenv("DATABASE_URL")
 	log.Printf("DEBUG: DATABASE_URL from env: %s", maskPassword(dbURL))
@@ -48,109 +45,79 @@ func InitDB() error {
 		log.Printf("DEBUG: ConnectionStrings__DbConnection from env: %s", maskPassword(dbURL))
 	}
 
-	// Fallback to single underscore version
+	// If still empty, try individual environment variables
 	if dbURL == "" {
-		dbURL = os.Getenv("ConnectionStringsDbConnection")
-		log.Printf("DEBUG: ConnectionStringsDbConnection from env: %s", maskPassword(dbURL))
+		host := os.Getenv("DB_HOST")
+		port := os.Getenv("DB_PORT")
+		user := os.Getenv("DB_USER")
+		password := os.Getenv("DB_PASSWORD")
+		dbname := os.Getenv("DB_NAME")
+		sslmode := os.Getenv("DB_SSLMODE")
+
+		if host != "" && user != "" && dbname != "" {
+			if port == "" {
+				port = "5432"
+			}
+			if sslmode == "" {
+				sslmode = "require"
+			}
+			dbURL = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+				user, password, host, port, dbname, sslmode)
+		}
 	}
 
-	// Fallback to individual environment variables if connection string not available
 	if dbURL == "" {
-		dbURL = config.GetDatabaseURL()
-		log.Printf("DEBUG: Using config.GetDatabaseURL(): %s", maskPassword(dbURL))
+		return nil, fmt.Errorf("no database connection string found")
 	}
 
-	log.Printf("DEBUG: Final connection string being used: %s", maskPassword(dbURL))
+	log.Printf("DEBUG: Using database URL: %s", maskPassword(dbURL))
 
-	// Configure GORM logger
-	gormLogger := logger.Default.LogMode(logger.Info)
-	if os.Getenv("ENV") == "production" {
-		gormLogger = logger.Default.LogMode(logger.Error)
-	}
-
-	// Open database with GORM
-	var err error
-	DB, err = gorm.Open(postgres.Open(dbURL), &gorm.Config{
-		Logger: gormLogger,
-		NowFunc: func() time.Time {
-			return time.Now().UTC()
-		},
-	})
+	// Parse the connection string
+	config, err := pgx.ParseConfig(dbURL)
 	if err != nil {
-		return fmt.Errorf("error opening database: %v", err)
+		return nil, fmt.Errorf("failed to parse database config: %w", err)
 	}
 
-	// Get the underlying sql.DB for connection pool settings
-	sqlDB, err := DB.DB()
-	if err != nil {
-		return fmt.Errorf("error getting underlying sql.DB: %v", err)
+	// Create database connection using stdlib
+	database := stdlib.OpenDB(*config)
+	
+	// Test the connection
+	if err := database.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	// Set connection pool settings
-	sqlDB.SetMaxOpenConns(25)
-	sqlDB.SetMaxIdleConns(25)
-	sqlDB.SetConnMaxLifetime(time.Hour)
+	database.SetMaxOpenConns(25)
+	database.SetMaxIdleConns(5)
+	database.SetConnMaxLifetime(5 * time.Minute)
 
-	// Test the connection
-	if err := sqlDB.Ping(); err != nil {
-		return fmt.Errorf("error connecting to database: %v", err)
-	}
-
-	log.Println("Database connected successfully with GORM")
-
-	// Run GORM migrations
-	if err := runGORMMigrations(); err != nil {
-		log.Printf("Warning: Error running GORM migrations: %v", err)
-	}
-
-	return nil
+	log.Println("Database connection established successfully")
+	return database, nil
 }
 
-// CloseDB closes the database connection
-func CloseDB() {
-	if DB != nil {
-		sqlDB, err := DB.DB()
-		if err != nil {
-			log.Printf("Error getting underlying sql.DB: %v", err)
-			return
-		}
-		sqlDB.Close()
-		log.Println("Database connection closed")
-	}
-}
-
-// runGORMMigrations runs the database schema migrations using GORM
-func runGORMMigrations() error {
-	log.Println("Running GORM migrations...")
-
-	// Run auto-migrations
-	if err := AutoMigrate(DB); err != nil {
-		return fmt.Errorf("error running auto-migrations: %v", err)
+// CreatePool creates a pgx pool for sqlc operations
+func CreatePool(databaseURL string) (*pgxpool.Pool, error) {
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse pool config: %w", err)
 	}
 
-	// Create indexes for performance
-	if err := CreateIndexes(DB); err != nil {
-		log.Printf("Warning: Error creating indexes: %v", err)
+	// Configure pool settings
+	config.MaxConns = 25
+	config.MinConns = 5
+	config.MaxConnLifetime = 5 * time.Minute
+	config.MaxConnIdleTime = 1 * time.Minute
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create connection pool: %w", err)
 	}
 
-	// Seed initial data if needed
-	if err := SeedData(DB); err != nil {
-		log.Printf("Warning: Error seeding data: %v", err)
+	// Test the pool
+	if err := pool.Ping(context.Background()); err != nil {
+		return nil, fmt.Errorf("failed to ping pool: %w", err)
 	}
 
-	log.Println("GORM migrations completed successfully")
-	return nil
-}
-
-// GetDB returns the GORM database instance
-func GetDB() *gorm.DB {
-	return DB
-}
-
-// GetRawDB returns the underlying sql.DB instance (useful for raw SQL queries)
-func GetRawDB() (*sql.DB, error) {
-	if DB == nil {
-		return nil, fmt.Errorf("database not initialized")
-	}
-	return DB.DB()
+	log.Println("Database pool created successfully")
+	return pool, nil
 }
