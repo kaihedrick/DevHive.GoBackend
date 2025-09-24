@@ -29,7 +29,7 @@ jobs:
       - name: Get latest Go version
         id: go_version
         run: |
-          LATEST_VERSION=$(curl -s https://go.dev/VERSION?m=text | sed 's/go//')
+          LATEST_VERSION=$(curl -s https://go.dev/VERSION?m=text | head -n1 | sed 's/go//')
           echo "LATEST_VERSION=$LATEST_VERSION" >> $GITHUB_ENV
           echo "Latest Go version: $LATEST_VERSION"
 
@@ -92,7 +92,7 @@ jobs:
       - name: Get latest Go version
         id: go_version
         run: |
-          LATEST_VERSION=$(curl -s https://go.dev/VERSION?m=text | sed 's/go//')
+          LATEST_VERSION=$(curl -s https://go.dev/VERSION?m=text | head -n1 | sed 's/go//')
           echo "LATEST_VERSION=$LATEST_VERSION" >> $GITHUB_ENV
           echo "Latest Go version: $LATEST_VERSION"
 
