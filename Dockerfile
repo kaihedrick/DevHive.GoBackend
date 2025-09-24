@@ -1,20 +1,23 @@
+# Build arguments for version pinning
+ARG GO_VERSION=1.25
+ARG ALPINE_VERSION=3.20
+
 # Build stage
-FROM golang:latest-alpine AS builder
+FROM golang:${GO_VERSION}-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata
+RUN apk add --no-cache build-base ca-certificates tzdata git
 
 # Install sqlc
-RUN go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+RUN go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.27.0
 
 # Set working directory
-WORKDIR /app
+WORKDIR /src
 
-# Copy go mod files
+# Cache modules first
 COPY go.mod go.sum ./
-
-# Download dependencies
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy source code
 COPY . .
@@ -22,14 +25,16 @@ COPY . .
 # Generate sqlc code
 RUN sqlc generate
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" -o main ./cmd/devhive-api
+# Build the application with optimizations
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -trimpath -ldflags="-s -w" -o /out/app ./cmd/devhive-api
 
-# Final stage
-FROM alpine:latest
+# Runtime stage
+FROM alpine:${ALPINE_VERSION}
 
-# Install ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates tzdata
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates tzdata wget
 
 # Create non-root user
 RUN addgroup -g 1001 -S appgroup && \
@@ -39,10 +44,10 @@ RUN addgroup -g 1001 -S appgroup && \
 WORKDIR /app
 
 # Copy binary from builder stage
-COPY --from=builder /app/main .
+COPY --from=builder /out/app /usr/local/bin/app
 
 # Copy migrations
-COPY --from=builder /app/cmd/devhive-api/migrations ./migrations
+COPY --from=builder /src/cmd/devhive-api/migrations ./migrations
 
 # Change ownership to non-root user
 RUN chown -R appuser:appgroup /app
@@ -58,4 +63,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8080/healthz || exit 1
 
 # Run the application
-CMD ["./main"]
+ENTRYPOINT ["/usr/local/bin/app"]
