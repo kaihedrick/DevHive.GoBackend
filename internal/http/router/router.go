@@ -1,6 +1,7 @@
 package router
 
 import (
+	"database/sql"
 	"time"
 
 	"devhive-backend/internal/config"
@@ -15,7 +16,7 @@ import (
 )
 
 // Setup creates and configures the HTTP router
-func Setup(cfg *config.Config, queries *repo.Queries) *chi.Mux {
+func Setup(cfg *config.Config, queries *repo.Queries, db interface{}) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -35,8 +36,9 @@ func Setup(cfg *config.Config, queries *repo.Queries) *chi.Mux {
 	}))
 
 	// Health check endpoints
-	r.Get("/healthz", handlers.HealthCheck)
-	r.Get("/readyz", handlers.ReadinessCheck(cfg.DatabaseURL))
+	r.Get("/health", handlers.HealthCheck)
+	r.Get("/healthz", handlers.LivenessCheck)
+	r.Get("/readyz", handlers.ReadinessCheck(db.(*sql.DB)))
 
 	// API routes
 	r.Route("/api", func(api chi.Router) {

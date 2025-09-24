@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"devhive-backend/db"
 	"devhive-backend/internal/config"
 	"devhive-backend/internal/http/router"
 	"devhive-backend/internal/repo"
@@ -26,20 +28,30 @@ func main() {
 		log.Fatal("Failed to load config:", err)
 	}
 
-	// Setup logging
+	// Setup structured logging
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.Printf("Starting DevHive API server on port %s", cfg.Port)
 
 	// Connect to database
-	db, err := initDB(cfg.DatabaseURL)
+	database, err := initDB(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := database.Close(); err != nil {
+			log.Printf("Error closing database: %v", err)
+		}
+	}()
 
-	// Run migrations (temporarily disabled)
-	// if err := runMigrations(db); err != nil {
-	//	log.Fatal("Failed to run migrations:", err)
-	// }
+	// Run database migrations
+	if err := db.RunMigrations(database); err != nil {
+		log.Printf("Warning: Migration failed: %v", err)
+	}
+
+	// Create indexes for performance
+	if err := db.CreateIndexes(database); err != nil {
+		log.Printf("Warning: Index creation failed: %v", err)
+	}
 
 	// Create pgx pool for sqlc
 	pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
@@ -52,9 +64,9 @@ func main() {
 	queries := repo.New(pool)
 
 	// Setup router
-	r := router.Setup(cfg, queries)
+	r := router.Setup(cfg, queries, database)
 
-	// Start server
+	// Start server with graceful shutdown
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      r,
@@ -63,11 +75,13 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Graceful shutdown
+	// Graceful shutdown handler
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
+
 	go func() {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-		<-sigChan
+		<-shutdown
+		log.Println("Shutting down server...")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -77,22 +91,28 @@ func main() {
 		}
 	}()
 
-	log.Printf("Starting server on port %s", cfg.Port)
+	log.Printf("Server started successfully on port %s", cfg.Port)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal("Server failed:", err)
 	}
 }
 
+// initDB initializes database connection with proper error handling
 func initDB(databaseURL string) (*sql.DB, error) {
 	config, err := pgx.ParseConfig(databaseURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse database config: %w", err)
 	}
 
-	db := stdlib.OpenDB(*config)
-	if err := db.Ping(); err != nil {
-		return nil, err
+	database := stdlib.OpenDB(*config)
+	if err := database.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	return db, nil
+	// Set connection pool settings
+	database.SetMaxOpenConns(25)
+	database.SetMaxIdleConns(5)
+	database.SetConnMaxLifetime(5 * time.Minute)
+
+	return database, nil
 }
