@@ -80,7 +80,7 @@ func InitDB() (*sql.DB, error) {
 
 	// Create database connection using stdlib
 	database := stdlib.OpenDB(*config)
-	
+
 	// Test the connection
 	if err := database.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)

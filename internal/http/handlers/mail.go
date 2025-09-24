@@ -40,4 +40,3 @@ func (h *MailHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 		"subject": req.Subject,
 	})
 }
-

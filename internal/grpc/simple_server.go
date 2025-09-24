@@ -21,10 +21,10 @@ type SimpleServer struct {
 // NewSimpleServer creates a new simple gRPC server
 func NewSimpleServer(cfg *config.Config, queries *repo.Queries) *SimpleServer {
 	grpcServer := grpc.NewServer()
-	
+
 	// Enable reflection for debugging
 	reflection.Register(grpcServer)
-	
+
 	return &SimpleServer{
 		grpcServer: grpcServer,
 		queries:    queries,
@@ -38,7 +38,7 @@ func (s *SimpleServer) Start(port string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	log.Printf("Starting gRPC server on port %s", port)
 	return s.grpcServer.Serve(lis)
 }
