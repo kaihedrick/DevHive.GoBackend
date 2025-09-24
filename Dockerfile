@@ -2,7 +2,7 @@
 FROM golang:1.23-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata
+RUN apk add --no-cache git ca-certificates tzdata sqlc
 
 # Set working directory
 WORKDIR /app
@@ -16,8 +16,11 @@ RUN go mod download
 # Copy source code
 COPY . .
 
+# Generate sqlc code
+RUN sqlc generate
+
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/devhive-api
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" -o main ./cmd/devhive-api
 
 # Final stage
 FROM alpine:latest

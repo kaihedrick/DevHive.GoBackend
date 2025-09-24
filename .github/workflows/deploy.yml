@@ -1,60 +1,41 @@
-name: CI/CD - DevHive Go Backend
+name: Deploy - Production Deployment
 
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
 
 jobs:
-  build-test-validate:
+  deploy:
+    name: Deploy to Production
     runs-on: ubuntu-latest
+    environment: production
+    
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22.x'
+          go-version: '1.23'
           cache: true
 
-      - name: Cache Go build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
-      # OpenAPI codegen not configured - skipping verification
-      - name: Skip OpenAPI codegen verification (not configured)
+      - name: Download dependencies
         run: |
-          echo "⚠️ OpenAPI codegen verification skipped - API files not configured"
-          echo "✅ Continuing with build process"
-
-      - name: Go vet
-        run: go vet ./...
+          go mod download
+          go mod verify
 
       - name: Run tests
-        run: go test ./... -coverprofile=coverage.out
+        run: go test ./...
 
-      - name: Build binary (sanity)
-        run: go build ./cmd/devhive-api
-
-  publish-and-deploy:
-    needs: build-test-validate
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Build application
+        run: |
+          CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/devhive-api
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -63,14 +44,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
+      - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=latest
-            type=sha
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -79,16 +62,29 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Install Flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Deploy to Fly
+      - name: Deploy to Fly.io
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          # Option A: source deploy (uses your Dockerfile and fly.toml)
           flyctl deploy --remote-only --strategy immediate
 
-          # Option B: deploy the GHCR image (uncomment to pin to image)
-          # flyctl deploy --image ghcr.io/${{ github.repository }}:sha-${{ github.sha }} --strategy immediate
+      - name: Verify deployment
+        run: |
+          sleep 30
+          curl -f https://devhive-go-backend.fly.dev/health || exit 1
+          echo "✅ Production deployment verified successfully"
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "🚀 Deployment successful!"
+          else
+            echo "❌ Deployment failed!"
+          fi

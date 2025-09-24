@@ -1,0 +1,6 @@
+# Trivy ignore file for false positives
+# Add vulnerability IDs that are known false positives
+
+# Example format:
+# CVE-2023-12345
+# GHSA-xxxx-xxxx-xxxx
