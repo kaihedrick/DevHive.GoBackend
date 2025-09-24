@@ -5,10 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
-
-	"devhive-backend/config"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -34,11 +33,19 @@ type JWTConfig struct {
 // NewJWTConfig creates JWT config from environment
 func NewJWTConfig() *JWTConfig {
 	return &JWTConfig{
-		Secret:     config.GetEnv("JWT_SECRET", "your-secret-key"),
-		Issuer:     config.GetEnv("JWT_ISSUER", "devhive-backend"),
-		Audience:   config.GetEnv("JWT_AUDIENCE", "devhive-frontend"),
+		Secret:     getEnv("JWT_SECRET", "your-secret-key"),
+		Issuer:     getEnv("JWT_ISSUER", "devhive-backend"),
+		Audience:   getEnv("JWT_AUDIENCE", "devhive-frontend"),
 		ExpiryTime: 24 * time.Hour, // Exact match to .NET 24h expiry
 	}
+}
+
+// Helper function to get environment variable with default
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
 
 // JWTService handles JWT operations with .NET compatibility
