@@ -15,10 +15,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Get latest Go version
+        id: go_version
+        run: |
+          LATEST_VERSION=$(curl -s https://go.dev/VERSION?m=text | sed 's/go//')
+          echo "LATEST_VERSION=$LATEST_VERSION" >> $GITHUB_ENV
+          echo "Latest Go version: $LATEST_VERSION"
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: latest
+          go-version: ${{ env.LATEST_VERSION }}
           cache: true
 
       - name: Cache Go modules
@@ -106,10 +113,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Get latest Go version
+        id: go_version
+        run: |
+          LATEST_VERSION=$(curl -s https://go.dev/VERSION?m=text | sed 's/go//')
+          echo "LATEST_VERSION=$LATEST_VERSION" >> $GITHUB_ENV
+          echo "Latest Go version: $LATEST_VERSION"
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: latest
+          go-version: ${{ env.LATEST_VERSION }}
           cache: true
 
       - name: Download dependencies
