@@ -9,7 +9,10 @@ import (
 func JSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		// Log error but don't send response as header already sent
+		// TODO: Add proper logging
+	}
 }
 
 // Problem represents an RFC 7807 problem details response
@@ -33,7 +36,10 @@ func Problemf(w http.ResponseWriter, status int, typ, detail string) {
 		Detail: detail,
 	}
 
-	json.NewEncoder(w).Encode(problem)
+	if err := json.NewEncoder(w).Encode(problem); err != nil {
+		// Log error but don't send response as header already sent
+		// TODO: Add proper logging
+	}
 }
 
 // Decode decodes JSON request body into destination
@@ -86,4 +92,3 @@ func NotFound(w http.ResponseWriter, message string) {
 func InternalServerError(w http.ResponseWriter, message string) {
 	Problemf(w, http.StatusInternalServerError, "internal_server_error", message)
 }
-

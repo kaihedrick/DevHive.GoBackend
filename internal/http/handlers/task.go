@@ -583,6 +583,7 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	if req.AssigneeID != nil {
 		// TODO: Validate assignee is member of project
 		// For now, we'll skip assignee assignment
+		_ = req.AssigneeID // Suppress unused variable warning
 	}
 
 	task, err := h.queries.UpdateTask(r.Context(), repo.UpdateTaskParams{

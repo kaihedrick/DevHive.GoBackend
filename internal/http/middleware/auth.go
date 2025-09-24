@@ -8,6 +8,13 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// ContextKey is a custom type for context keys to avoid collisions
+type ContextKey string
+
+const (
+	UserIDKey ContextKey = "userID"
+)
+
 // RequireAuth creates middleware that requires valid JWT authentication
 func RequireAuth(signingKey string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -56,7 +63,7 @@ func RequireAuth(signingKey string) func(http.Handler) http.Handler {
 			}
 
 			// Add user ID to request context
-			ctx := context.WithValue(r.Context(), "userID", userID)
+			ctx := context.WithValue(r.Context(), UserIDKey, userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -64,6 +71,6 @@ func RequireAuth(signingKey string) func(http.Handler) http.Handler {
 
 // GetUserIDFromContext extracts the user ID from the request context
 func GetUserIDFromContext(ctx context.Context) (string, bool) {
-	userID, ok := ctx.Value("userID").(string)
+	userID, ok := ctx.Value(UserIDKey).(string)
 	return userID, ok
 }

@@ -46,7 +46,7 @@ jobs:
         run: go test ./... -coverprofile=coverage.out
 
       - name: Build binary (sanity)
-        run: go build ./cmd/server
+        run: go build ./cmd/devhive-api
 
   publish-and-deploy:
     needs: build-test-validate

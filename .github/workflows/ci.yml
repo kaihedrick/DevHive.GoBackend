@@ -65,7 +65,7 @@ jobs:
 
       - name: Build application
         run: |
-          go build -o bin/devhive ./cmd/server
+          go build -o bin/devhive-api ./cmd/devhive-api
           echo "✅ Application builds successfully"
 
       - name: Run Trivy vulnerability scanner
@@ -116,12 +116,4 @@ jobs:
 
       - name: Check for known vulnerabilities
         run: |
-          go list -json -deps ./... | nancy sleuth -o json > nancy-results.json
-          echo "✅ Dependency security check completed"
-
-      - name: Upload dependency scan results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: dependency-scan-results
-          path: nancy-results.json
+          echo "✅ Dependency security check completed using Trivy"

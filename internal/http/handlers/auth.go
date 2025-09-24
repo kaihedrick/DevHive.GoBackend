@@ -170,9 +170,9 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Delete reset token
-	err = h.queries.DeletePasswordReset(r.Context(), req.Token)
-	if err != nil {
+	if err := h.queries.DeletePasswordReset(r.Context(), req.Token); err != nil {
 		// Log error but don't fail the request
+		// TODO: Add proper logging
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Password updated successfully"})
