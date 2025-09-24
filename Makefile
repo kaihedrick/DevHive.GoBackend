@@ -143,17 +143,6 @@ fmt-check:
 	@echo "🔍 Checking code formatting..."
 	@gofmt -s -l . | findstr /R "." >nul && (echo "❌ Code is not properly formatted. Run 'gofmt -s -w .'" && gofmt -s -l . && exit 1) || echo "✅ Code formatting is correct"
 
-## lint: Lint code
-lint:
-	@echo "🔍 Linting code..."
-	golangci-lint run --timeout=5m
-	@echo "✅ Linting complete"
-
-## vet: Run go vet
-vet:
-	@echo "🔍 Running go vet..."
-	go vet ./...
-	@echo "✅ Go vet complete"
 
 ## security: Run security scan
 security:
@@ -183,5 +172,17 @@ check: fmt lint test security
 	@echo "✅ All checks passed!"
 
 ## ci: Run CI pipeline locally
-ci: vet test-coverage
+ci: vet lint test-coverage
 	@echo "✅ CI pipeline completed successfully!"
+
+## vet: Run go vet
+vet:
+	@echo "🔍 Running go vet..."
+	go vet ./...
+	@echo "✅ Go vet complete"
+
+## lint: Lint code
+lint:
+	@echo "🔍 Linting code..."
+	golangci-lint run --timeout=5m --build-tags=postgres,prod
+	@echo "✅ Linting complete"

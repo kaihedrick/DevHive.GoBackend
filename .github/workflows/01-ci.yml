@@ -13,7 +13,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -23,12 +23,26 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Go env & sanity
+        run: |
+          set -euo pipefail
+          go version
+          go env GOPATH
+          go mod verify       # ensure sums & module graph are consistent
+          go list -deps ./... > /dev/null  # force module resolution; surfaces missing deps early
+
+      - name: Download modules
+        run: go mod download
+
       - name: Install tools
         run: |
           go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.27.0
 
       - name: Generate code
         run: make gen   # runs sqlc generate
+
+      - name: Build (surface compiler errors early)
+        run: go build ./...
 
       - name: Format check
         run: make fmt-check
@@ -37,10 +51,13 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.59.1
-          args: --timeout=5m
+          args: --timeout=5m --build-tags=postgres,prod
 
-      - name: Vet & Test
-        run: make ci    # `vet`, `test -race -coverprofile=coverage.out`
+      - name: Vet
+        run: make vet
+
+      - name: Test with coverage
+        run: make test-coverage
 
       - name: Coverage summary
         run: |
@@ -56,6 +73,7 @@ jobs:
           ignore-unfixed: true
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
+          timeout: 5m
           
       - name: Upload SARIF
         if: always()

@@ -1,0 +1,23 @@
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+  build-tags: [postgres, prod]
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - gosimple
+    - ineffassign
+    - errcheck
+    - revive
+    - typecheck
+    - unused
+
+linters-settings:
+  govet:
+    check-shadowing: true
+  staticcheck:
+    go: "1.25"
+  revive:
+    min-confidence: 0.8

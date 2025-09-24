@@ -2,8 +2,8 @@
 ARG GO_VERSION=1.25
 ARG ALPINE_VERSION=3.20
 
-# Build stage
-FROM golang:${GO_VERSION}-alpine AS builder
+# Build stage - pinned for faster pulls
+FROM golang:1.25-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache build-base ca-certificates tzdata git
@@ -30,8 +30,8 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -trimpath -ldflags="-s -w" -o /out/app ./cmd/devhive-api
 
-# Runtime stage
-FROM alpine:${ALPINE_VERSION}
+# Runtime stage - pinned for faster pulls  
+FROM alpine:3.20
 
 # Install runtime dependencies
 RUN apk add --no-cache ca-certificates tzdata wget

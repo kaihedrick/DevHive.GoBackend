@@ -41,7 +41,9 @@ jobs:
       - name: Deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl deploy --remote-only --strategy immediate
+        run: |
+          # Use the pre-built image from GHCR instead of rebuilding
+          flyctl deploy --remote-only --strategy immediate --image ghcr.io/${{ github.repository }}:main
       - name: Verify health
         run: |
           flyctl checks list --json | jq -e '.[] | select(.Status!="passing")' && exit 1 || echo OK
