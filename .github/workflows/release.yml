@@ -141,7 +141,9 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Install Flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
+        uses: superfly/flyctl-actions/setup-flyctl@v1
+        with:
+          version: 0.3.180
 
       - name: Deploy to Fly.io Production
         env:

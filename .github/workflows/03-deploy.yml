@@ -28,7 +28,16 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@v1.8.0
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@v1
+        with:
+          version: 0.3.180
+      - name: Verify flyctl
+        run: |
+          flyctl version
+          flyctl status || true  # optional quick smoke
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       - name: Deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
