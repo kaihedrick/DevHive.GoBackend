@@ -1,10 +1,9 @@
-.PHONY: help build run test clean deps fmt lint security docker-build docker-run dev-setup prod-build gen db-up db-down
+.PHONY: help build run test clean deps fmt fmt-check lint security docker-build docker-run dev-setup prod-build gen db-up db-down ci vet test-coverage
 
 # Variables
 BINARY_NAME=devhive-api
 BINARY_PATH=bin/$(BINARY_NAME)
 DOCKER_IMAGE=devhive-backend
-GO_VERSION=1.23
 LDFLAGS=-ldflags="-w -s"
 
 # Default target
@@ -19,9 +18,12 @@ help:
 	@echo "  run          - Run the application locally"
 	@echo "  gen          - Generate sqlc code"
 	@echo "  fmt          - Format code"
+	@echo "  fmt-check    - Check code formatting"
 	@echo "  lint         - Lint code"
+	@echo "  vet          - Run go vet"
 	@echo "  test         - Run tests"
 	@echo "  test-coverage - Run tests with coverage"
+	@echo "  ci           - Run CI pipeline locally"
 	@echo ""
 	@echo "Database:"
 	@echo "  db-up        - Start PostgreSQL database"
@@ -136,11 +138,22 @@ fmt:
 	go fmt ./...
 	@echo "✅ Code formatted"
 
+## fmt-check: Check code formatting
+fmt-check:
+	@echo "🔍 Checking code formatting..."
+	@gofmt -s -l . | findstr /R "." >nul && (echo "❌ Code is not properly formatted. Run 'gofmt -s -w .'" && gofmt -s -l . && exit 1) || echo "✅ Code formatting is correct"
+
 ## lint: Lint code
 lint:
 	@echo "🔍 Linting code..."
 	golangci-lint run --timeout=5m
 	@echo "✅ Linting complete"
+
+## vet: Run go vet
+vet:
+	@echo "🔍 Running go vet..."
+	go vet ./...
+	@echo "✅ Go vet complete"
 
 ## security: Run security scan
 security:
@@ -170,5 +183,5 @@ check: fmt lint test security
 	@echo "✅ All checks passed!"
 
 ## ci: Run CI pipeline locally
-ci: deps gen fmt lint test security build
+ci: vet test-coverage
 	@echo "✅ CI pipeline completed successfully!"

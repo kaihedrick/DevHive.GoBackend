@@ -1,0 +1,64 @@
+name: CI
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+  security-events: write  # for SARIF upload
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go from go.mod
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install tools
+        run: |
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.27.0
+
+      - name: Generate code
+        run: make gen   # runs sqlc generate
+
+      - name: Format check
+        run: make fmt-check
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.59.1
+          args: --timeout=5m
+
+      - name: Vet & Test
+        run: make ci    # `vet`, `test -race -coverprofile=coverage.out`
+
+      - name: Coverage summary
+        run: |
+          go tool cover -func=coverage.out | tee coverage.txt
+          echo "### Coverage" >> $GITHUB_STEP_SUMMARY
+          awk '/total:/ {print "**"$0"**"}' coverage.txt >> $GITHUB_STEP_SUMMARY
+
+      - name: Trivy FS scan (SARIF)
+        uses: aquasecurity/trivy-action@v0.28.0
+        with:
+          scan-type: fs
+          format: sarif
+          ignore-unfixed: true
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
