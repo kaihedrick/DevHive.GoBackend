@@ -96,6 +96,9 @@ func (h *ProjectHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set cache headers for list endpoint (60 seconds)
+	w.Header().Set("Cache-Control", "private, max-age=60")
+
 	// Convert to response format
 	var projectResponses []ProjectResponse
 	for _, project := range projects {
@@ -242,6 +245,9 @@ func (h *ProjectHandler) JoinProject(w http.ResponseWriter, r *http.Request) {
 
 // GetProject handles getting a project by ID
 func (h *ProjectHandler) GetProject(w http.ResponseWriter, r *http.Request) {
+	// Set cache headers for single project endpoint (5 minutes)
+	w.Header().Set("Cache-Control", "private, max-age=300")
+
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		response.Unauthorized(w, "User ID not found in context")

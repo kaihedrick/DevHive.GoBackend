@@ -67,6 +67,7 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}) ch
 	r.Route("/auth", func(auth chi.Router) {
 		auth.Post("/login", authHandler.Login)
 		auth.Post("/refresh", authHandler.Refresh)
+		auth.Post("/logout", authHandler.Logout)
 		auth.Post("/password/reset-request", authHandler.RequestPasswordReset)
 		auth.Post("/password/reset", authHandler.ResetPassword)
 	})

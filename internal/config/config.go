@@ -21,10 +21,11 @@ type Config struct {
 
 // JWTConfig holds JWT-related configuration
 type JWTConfig struct {
-	SigningKey string
-	Issuer     string
-	Audience   string
-	Expiration time.Duration
+	SigningKey            string
+	Issuer                string
+	Audience              string
+	Expiration            time.Duration // Access token expiration (default: 15 minutes)
+	RefreshTokenExpiration time.Duration // Refresh token expiration (default: 7 days)
 }
 
 // CORSConfig holds CORS configuration
@@ -50,10 +51,11 @@ func Load() (*Config, error) {
 		GRPCPort:    getEnv("GRPC_PORT", "8081"),
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://devhive:devhive@localhost:5432/devhive?sslmode=disable"),
 		JWT: JWTConfig{
-			SigningKey: getEnv("JWT_SIGNING_KEY", "your-super-secret-jwt-key-change-in-production"),
-			Issuer:     getEnv("JWT_ISSUER", "https://api.devhive.it.com"),
-			Audience:   getEnv("JWT_AUDIENCE", "devhive-clients"),
-			Expiration: time.Duration(getEnvAsInt("JWT_EXPIRATION_HOURS", 24)) * time.Hour,
+			SigningKey:            getEnv("JWT_SIGNING_KEY", "your-super-secret-jwt-key-change-in-production"),
+			Issuer:                getEnv("JWT_ISSUER", "https://api.devhive.it.com"),
+			Audience:              getEnv("JWT_AUDIENCE", "devhive-clients"),
+			Expiration:            time.Duration(getEnvAsInt("JWT_EXPIRATION_MINUTES", 15)) * time.Minute, // Access token: 15 minutes
+			RefreshTokenExpiration: time.Duration(getEnvAsInt("JWT_REFRESH_EXPIRATION_DAYS", 7)) * 24 * time.Hour, // Refresh token: 7 days
 		},
 		CORS: CORSConfig{
 			AllowedOrigins:   getEnvSlice("CORS_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173", "http://localhost:8080", "https://d35scdhidypl44.cloudfront.net", "https://devhive.it.com"}),

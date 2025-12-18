@@ -75,23 +75,124 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate JWT token
-	token, err := h.generateJWT(user.ID.String())
+	// Generate access token (short-lived)
+	accessToken, err := h.generateJWT(user.ID.String())
 	if err != nil {
 		response.InternalServerError(w, "Failed to generate token")
 		return
 	}
 
+	// Generate refresh token (long-lived)
+	refreshToken := generateRandomToken(64)
+	refreshExpiresAt := time.Now().Add(h.cfg.JWT.RefreshTokenExpiration)
+
+	// Store refresh token in database
+	_, err = h.queries.CreateRefreshToken(r.Context(), repo.CreateRefreshTokenParams{
+		UserID:    user.ID,
+		Token:     refreshToken,
+		ExpiresAt: refreshExpiresAt,
+	})
+	if err != nil {
+		response.InternalServerError(w, "Failed to create refresh token")
+		return
+	}
+
+	// Set refresh token as HttpOnly cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    refreshToken,
+		Path:     "/",
+		MaxAge:   int(h.cfg.JWT.RefreshTokenExpiration.Seconds()),
+		HttpOnly: true,
+		Secure:   r.TLS != nil, // Only send over HTTPS in production
+		SameSite: http.SameSiteStrictMode,
+	})
+
 	response.JSON(w, http.StatusOK, LoginResponse{
-		Token:  token,
+		Token:  accessToken,
 		UserID: user.ID.String(),
 	})
 }
 
 // Refresh handles token refresh
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
-	// For now, just return an error as refresh is optional
-	response.BadRequest(w, "Token refresh not implemented")
+	// Get refresh token from cookie
+	cookie, err := r.Cookie("refresh_token")
+	if err != nil {
+		response.Unauthorized(w, "Refresh token not found")
+		return
+	}
+
+	refreshToken := cookie.Value
+
+	// Get refresh token from database
+	tokenRecord, err := h.queries.GetRefreshToken(r.Context(), refreshToken)
+	if err != nil {
+		response.Unauthorized(w, "Invalid refresh token")
+		return
+	}
+
+	// Check if token is expired
+	if time.Now().After(tokenRecord.ExpiresAt) {
+		// Delete expired token
+		_ = h.queries.DeleteRefreshToken(r.Context(), refreshToken)
+		response.Unauthorized(w, "Refresh token has expired")
+		return
+	}
+
+	// Verify user still exists and is active
+	user, err := h.queries.GetUserByID(r.Context(), tokenRecord.UserID)
+	if err != nil {
+		response.Unauthorized(w, "User not found")
+		return
+	}
+
+	if !user.Active {
+		// Delete all refresh tokens for inactive user
+		_ = h.queries.DeleteUserRefreshTokens(r.Context(), user.ID)
+		response.Unauthorized(w, "Account is deactivated")
+		return
+	}
+
+	// Generate new access token
+	accessToken, err := h.generateJWT(user.ID.String())
+	if err != nil {
+		response.InternalServerError(w, "Failed to generate token")
+		return
+	}
+
+	// Optionally rotate refresh token (security best practice)
+	// For now, we'll keep the same refresh token but extend expiration
+	newRefreshExpiresAt := time.Now().Add(h.cfg.JWT.RefreshTokenExpiration)
+
+	// Delete old refresh token and create new one
+	_ = h.queries.DeleteRefreshToken(r.Context(), refreshToken)
+	newRefreshToken := generateRandomToken(64)
+	_, err = h.queries.CreateRefreshToken(r.Context(), repo.CreateRefreshTokenParams{
+		UserID:    user.ID,
+		Token:     newRefreshToken,
+		ExpiresAt: newRefreshExpiresAt,
+	})
+	if err != nil {
+		response.InternalServerError(w, "Failed to create refresh token")
+		return
+	}
+
+	// Set new refresh token cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    newRefreshToken,
+		Path:     "/",
+		MaxAge:   int(h.cfg.JWT.RefreshTokenExpiration.Seconds()),
+		HttpOnly: true,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteStrictMode,
+	})
+
+	response.JSON(w, http.StatusOK, LoginResponse{
+		Token:  accessToken,
+		UserID: user.ID.String(),
+	})
 }
 
 // RequestPasswordReset handles password reset requests
@@ -176,6 +277,29 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Password updated successfully"})
+}
+
+// Logout handles user logout
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	// Get refresh token from cookie
+	cookie, err := r.Cookie("refresh_token")
+	if err == nil {
+		// Delete refresh token from database
+		_ = h.queries.DeleteRefreshToken(r.Context(), cookie.Value)
+	}
+
+	// Clear refresh token cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1, // Delete cookie
+		HttpOnly: true,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteStrictMode,
+	})
+
+	response.JSON(w, http.StatusOK, map[string]string{"message": "Logged out successfully"})
 }
 
 // generateJWT generates a JWT token for the user
