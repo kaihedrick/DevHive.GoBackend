@@ -1,0 +1,23 @@
+# Act Configuration File
+# See: https://github.com/nektos/act#configuration
+
+# Platform images to use for runners
+# Format: platform=image:tag
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+-P ubuntu-22.04=catthehacker/ubuntu:act-22.04
+-P ubuntu-20.04=catthehacker/ubuntu:act-20.04
+
+# Container options
+--container-architecture linux/amd64
+
+# Reuse containers for faster runs (optional)
+--reuse
+
+# Verbose output for debugging
+# Uncomment to enable:
+# -v
+
+# Bind mounts (if needed for local testing)
+# --bind
+
+

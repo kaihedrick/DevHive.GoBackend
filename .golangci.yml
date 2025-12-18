@@ -1,7 +1,8 @@
 run:
   timeout: 5m
-  modules-download-mode: readonly
-  build-tags: [postgres, prod]
+  # Best practice for CI: allow Go to download modules, but don't mutate go.mod/go.sum
+  # See golangci-lint docs on modules-download-mode.
+  modules-download-mode: mod
 
 linters:
   enable:
