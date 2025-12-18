@@ -44,7 +44,7 @@ func (s *TaskServer) GetTask(ctx context.Context, req *v1.GetTaskRequest) (*v1.T
 		ProjectId:   task.ProjectID.String(),
 		SprintId:    sprintID,
 		AssigneeId:  assigneeID,
-		Title:       task.Title,
+		Title:       getStringValue(task.Description), // Use description as title for gRPC compatibility
 		Description: getStringValue(task.Description),
 		Status:      int32(task.Status),
 		CreatedAt:   timestamppb.New(task.CreatedAt),
@@ -71,7 +71,6 @@ func (s *TaskServer) CreateTask(ctx context.Context, req *v1.CreateTaskRequest) 
 	task, err := s.queries.CreateTask(ctx, repo.CreateTaskParams{
 		ProjectID:   projectID,
 		SprintID:    sprintID,
-		Title:       req.Title,
 		Description: &req.Description,
 		Status:      1, // Default status: TODO
 	})
@@ -92,7 +91,7 @@ func (s *TaskServer) CreateTask(ctx context.Context, req *v1.CreateTaskRequest) 
 		ProjectId:   task.ProjectID.String(),
 		SprintId:    sprintIDStr,
 		AssigneeId:  assigneeID,
-		Title:       task.Title,
+		Title:       getStringValue(task.Description), // Use description as title for gRPC compatibility
 		Description: getStringValue(task.Description),
 		Status:      int32(task.Status),
 		CreatedAt:   timestamppb.New(task.CreatedAt),
@@ -109,7 +108,6 @@ func (s *TaskServer) UpdateTask(ctx context.Context, req *v1.UpdateTaskRequest) 
 
 	task, err := s.queries.UpdateTask(ctx, repo.UpdateTaskParams{
 		ID:          taskID,
-		Title:       req.Title,
 		Description: &req.Description,
 	})
 	if err != nil {
@@ -129,7 +127,7 @@ func (s *TaskServer) UpdateTask(ctx context.Context, req *v1.UpdateTaskRequest) 
 		ProjectId:   task.ProjectID.String(),
 		SprintId:    sprintID,
 		AssigneeId:  assigneeID,
-		Title:       task.Title,
+		Title:       getStringValue(task.Description), // Use description as title for gRPC compatibility
 		Description: getStringValue(task.Description),
 		Status:      int32(task.Status),
 		CreatedAt:   timestamppb.New(task.CreatedAt),
@@ -183,7 +181,7 @@ func (s *TaskServer) ListTasks(ctx context.Context, req *v1.ListTasksRequest) (*
 			ProjectId:   task.ProjectID.String(),
 			SprintId:    sprintID,
 			AssigneeId:  assigneeID,
-			Title:       task.Title,
+			Title:       getStringValue(task.Description), // Use description as title for gRPC compatibility
 			Description: getStringValue(task.Description),
 			Status:      int32(task.Status),
 			CreatedAt:   timestamppb.New(task.CreatedAt),
@@ -209,10 +207,17 @@ func (s *TaskServer) AssignTask(ctx context.Context, req *v1.AssignTaskRequest) 
 		return nil, status.Errorf(codes.InvalidArgument, "invalid assignee ID: %v", err)
 	}
 
+	// Get current task to preserve description
+	currentTask, err := s.queries.GetTaskByID(ctx, taskID)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "task not found: %v", err)
+	}
+
 	assigneeUUID := pgtype.UUID{Bytes: assigneeID, Valid: true}
 	_, err = s.queries.UpdateTask(ctx, repo.UpdateTaskParams{
-		ID:         taskID,
-		AssigneeID: assigneeUUID,
+		ID:          taskID,
+		Description: currentTask.Description,
+		AssigneeID:  assigneeUUID,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to assign task: %v", err)

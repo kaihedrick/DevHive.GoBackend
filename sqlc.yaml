@@ -1,7 +1,7 @@
 version: "2"
 sql:
   - engine: postgresql
-    schema: "migrations"
+    schema: ["cmd/devhive-api/migrations"]
     queries: "internal/*/queries.sql"
     gen:
       go:

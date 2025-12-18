@@ -137,6 +137,32 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 	return i, err
 }
 
+const createRefreshToken = `-- name: CreateRefreshToken :one
+INSERT INTO refresh_tokens (user_id, token, expires_at)
+VALUES ($1, $2, $3)
+RETURNING id, user_id, token, expires_at, created_at
+`
+
+type CreateRefreshTokenParams struct {
+	UserID    uuid.UUID `json:"userId"`
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// Refresh Token Queries
+func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error) {
+	row := q.db.QueryRow(ctx, createRefreshToken, arg.UserID, arg.Token, arg.ExpiresAt)
+	var i RefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Token,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createSprint = `-- name: CreateSprint :one
 INSERT INTO sprints (project_id, name, description, start_date, end_date)
 VALUES ($1, $2, $3, $4, $5)
@@ -176,16 +202,15 @@ func (q *Queries) CreateSprint(ctx context.Context, arg CreateSprintParams) (Spr
 }
 
 const createTask = `-- name: CreateTask :one
-INSERT INTO tasks (project_id, sprint_id, assignee_id, title, description, status)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, project_id, sprint_id, assignee_id, title, description, status, created_at, updated_at
+INSERT INTO tasks (project_id, sprint_id, assignee_id, description, status)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, project_id, sprint_id, assignee_id, description, status, created_at, updated_at
 `
 
 type CreateTaskParams struct {
 	ProjectID   uuid.UUID   `json:"projectId"`
 	SprintID    pgtype.UUID `json:"sprintId"`
 	AssigneeID  pgtype.UUID `json:"assigneeId"`
-	Title       string      `json:"title"`
 	Description *string     `json:"description"`
 	Status      int32       `json:"status"`
 }
@@ -195,7 +220,6 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		arg.ProjectID,
 		arg.SprintID,
 		arg.AssigneeID,
-		arg.Title,
 		arg.Description,
 		arg.Status,
 	)
@@ -205,7 +229,6 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		&i.ProjectID,
 		&i.SprintID,
 		&i.AssigneeID,
-		&i.Title,
 		&i.Description,
 		&i.Status,
 		&i.CreatedAt,
@@ -283,6 +306,15 @@ func (q *Queries) DeleteExpiredPasswordResets(ctx context.Context) error {
 	return err
 }
 
+const deleteExpiredRefreshTokens = `-- name: DeleteExpiredRefreshTokens :exec
+DELETE FROM refresh_tokens WHERE expires_at < now()
+`
+
+func (q *Queries) DeleteExpiredRefreshTokens(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteExpiredRefreshTokens)
+	return err
+}
+
 const deleteMessage = `-- name: DeleteMessage :exec
 DELETE FROM messages WHERE id = $1
 `
@@ -310,6 +342,15 @@ func (q *Queries) DeleteProject(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const deleteRefreshToken = `-- name: DeleteRefreshToken :exec
+DELETE FROM refresh_tokens WHERE token = $1
+`
+
+func (q *Queries) DeleteRefreshToken(ctx context.Context, token string) error {
+	_, err := q.db.Exec(ctx, deleteRefreshToken, token)
+	return err
+}
+
 const deleteSprint = `-- name: DeleteSprint :exec
 DELETE FROM sprints WHERE id = $1
 `
@@ -325,6 +366,15 @@ DELETE FROM tasks WHERE id = $1
 
 func (q *Queries) DeleteTask(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteTask, id)
+	return err
+}
+
+const deleteUserRefreshTokens = `-- name: DeleteUserRefreshTokens :exec
+DELETE FROM refresh_tokens WHERE user_id = $1
+`
+
+func (q *Queries) DeleteUserRefreshTokens(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteUserRefreshTokens, userID)
 	return err
 }
 
@@ -501,6 +551,25 @@ func (q *Queries) GetProjectMembers(ctx context.Context, projectID uuid.UUID) ([
 	return items, nil
 }
 
+const getRefreshToken = `-- name: GetRefreshToken :one
+SELECT id, user_id, token, expires_at, created_at
+FROM refresh_tokens
+WHERE token = $1
+`
+
+func (q *Queries) GetRefreshToken(ctx context.Context, token string) (RefreshToken, error) {
+	row := q.db.QueryRow(ctx, getRefreshToken, token)
+	var i RefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Token,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getSprintByID = `-- name: GetSprintByID :one
 SELECT s.id, s.project_id, s.name, s.description, s.start_date, s.end_date, s.is_completed, s.is_started, s.created_at, s.updated_at,
        p.owner_id, u.username as owner_username, u.email as owner_email, u.first_name as owner_first_name, u.last_name as owner_last_name
@@ -552,7 +621,7 @@ func (q *Queries) GetSprintByID(ctx context.Context, id uuid.UUID) (GetSprintByI
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT t.id, t.project_id, t.sprint_id, t.assignee_id, t.title, t.description, t.status, t.created_at, t.updated_at,
+SELECT t.id, t.project_id, t.sprint_id, t.assignee_id, t.description, t.status, t.created_at, t.updated_at,
        u.username as assignee_username, u.first_name as assignee_first_name, u.last_name as assignee_last_name,
        p.owner_id, owner.username as owner_username, owner.email as owner_email, owner.first_name as owner_first_name, owner.last_name as owner_last_name
 FROM tasks t
@@ -567,7 +636,6 @@ type GetTaskByIDRow struct {
 	ProjectID         uuid.UUID   `json:"projectId"`
 	SprintID          pgtype.UUID `json:"sprintId"`
 	AssigneeID        pgtype.UUID `json:"assigneeId"`
-	Title             string      `json:"title"`
 	Description       *string     `json:"description"`
 	Status            int32       `json:"status"`
 	CreatedAt         time.Time   `json:"createdAt"`
@@ -590,7 +658,6 @@ func (q *Queries) GetTaskByID(ctx context.Context, id uuid.UUID) (GetTaskByIDRow
 		&i.ProjectID,
 		&i.SprintID,
 		&i.AssigneeID,
-		&i.Title,
 		&i.Description,
 		&i.Status,
 		&i.CreatedAt,
@@ -1010,7 +1077,7 @@ func (q *Queries) ListSprintsByProject(ctx context.Context, arg ListSprintsByPro
 }
 
 const listTasksByProject = `-- name: ListTasksByProject :many
-SELECT t.id, t.project_id, t.sprint_id, t.assignee_id, t.title, t.description, t.status, t.created_at, t.updated_at,
+SELECT t.id, t.project_id, t.sprint_id, t.assignee_id, t.description, t.status, t.created_at, t.updated_at,
        u.username as assignee_username, u.first_name as assignee_first_name, u.last_name as assignee_last_name,
        p.owner_id, owner.username as owner_username, owner.email as owner_email, owner.first_name as owner_first_name, owner.last_name as owner_last_name
 FROM tasks t
@@ -1033,7 +1100,6 @@ type ListTasksByProjectRow struct {
 	ProjectID         uuid.UUID   `json:"projectId"`
 	SprintID          pgtype.UUID `json:"sprintId"`
 	AssigneeID        pgtype.UUID `json:"assigneeId"`
-	Title             string      `json:"title"`
 	Description       *string     `json:"description"`
 	Status            int32       `json:"status"`
 	CreatedAt         time.Time   `json:"createdAt"`
@@ -1062,7 +1128,6 @@ func (q *Queries) ListTasksByProject(ctx context.Context, arg ListTasksByProject
 			&i.ProjectID,
 			&i.SprintID,
 			&i.AssigneeID,
-			&i.Title,
 			&i.Description,
 			&i.Status,
 			&i.CreatedAt,
@@ -1087,7 +1152,7 @@ func (q *Queries) ListTasksByProject(ctx context.Context, arg ListTasksByProject
 }
 
 const listTasksBySprint = `-- name: ListTasksBySprint :many
-SELECT t.id, t.project_id, t.sprint_id, t.assignee_id, t.title, t.description, t.status, t.created_at, t.updated_at,
+SELECT t.id, t.project_id, t.sprint_id, t.assignee_id, t.description, t.status, t.created_at, t.updated_at,
        u.username as assignee_username, u.first_name as assignee_first_name, u.last_name as assignee_last_name,
        p.owner_id, owner.username as owner_username, owner.email as owner_email, owner.first_name as owner_first_name, owner.last_name as owner_last_name
 FROM tasks t
@@ -1110,7 +1175,6 @@ type ListTasksBySprintRow struct {
 	ProjectID         uuid.UUID   `json:"projectId"`
 	SprintID          pgtype.UUID `json:"sprintId"`
 	AssigneeID        pgtype.UUID `json:"assigneeId"`
-	Title             string      `json:"title"`
 	Description       *string     `json:"description"`
 	Status            int32       `json:"status"`
 	CreatedAt         time.Time   `json:"createdAt"`
@@ -1139,7 +1203,6 @@ func (q *Queries) ListTasksBySprint(ctx context.Context, arg ListTasksBySprintPa
 			&i.ProjectID,
 			&i.SprintID,
 			&i.AssigneeID,
-			&i.Title,
 			&i.Description,
 			&i.Status,
 			&i.CreatedAt,
@@ -1358,32 +1421,25 @@ func (q *Queries) UpdateSprintStatus(ctx context.Context, arg UpdateSprintStatus
 
 const updateTask = `-- name: UpdateTask :one
 UPDATE tasks
-SET title = $2, description = $3, assignee_id = $4, updated_at = now()
+SET description = $2, assignee_id = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, sprint_id, assignee_id, title, description, status, created_at, updated_at
+RETURNING id, project_id, sprint_id, assignee_id, description, status, created_at, updated_at
 `
 
 type UpdateTaskParams struct {
 	ID          uuid.UUID   `json:"id"`
-	Title       string      `json:"title"`
 	Description *string     `json:"description"`
 	AssigneeID  pgtype.UUID `json:"assigneeId"`
 }
 
 func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, error) {
-	row := q.db.QueryRow(ctx, updateTask,
-		arg.ID,
-		arg.Title,
-		arg.Description,
-		arg.AssigneeID,
-	)
+	row := q.db.QueryRow(ctx, updateTask, arg.ID, arg.Description, arg.AssigneeID)
 	var i Task
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
 		&i.SprintID,
 		&i.AssigneeID,
-		&i.Title,
 		&i.Description,
 		&i.Status,
 		&i.CreatedAt,
@@ -1396,7 +1452,7 @@ const updateTaskStatus = `-- name: UpdateTaskStatus :one
 UPDATE tasks
 SET status = $2, updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, sprint_id, assignee_id, title, description, status, created_at, updated_at
+RETURNING id, project_id, sprint_id, assignee_id, description, status, created_at, updated_at
 `
 
 type UpdateTaskStatusParams struct {
@@ -1412,7 +1468,6 @@ func (q *Queries) UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusPara
 		&i.ProjectID,
 		&i.SprintID,
 		&i.AssigneeID,
-		&i.Title,
 		&i.Description,
 		&i.Status,
 		&i.CreatedAt,

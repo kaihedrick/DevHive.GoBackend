@@ -374,7 +374,6 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		ProjectID:   projectUUID,
 		SprintID:    sprintUUID,
 		AssigneeID:  assigneeUUID,
-		Title:       req.Description, // Use description as title
 		Description: &req.Description,
 		Status:      req.Status,
 	})
@@ -588,7 +587,6 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 
 	task, err := h.queries.UpdateTask(r.Context(), repo.UpdateTaskParams{
 		ID:          taskUUID,
-		Title:       description, // Use description as title
 		Description: &description,
 		AssigneeID:  assigneeID,
 	})

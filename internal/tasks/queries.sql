@@ -1,5 +1,5 @@
 -- name: GetTaskByID :one
-SELECT t.id, t.project_id, t.sprint_id, t.assignee_id, t.title, t.description, t.status, t.created_at, t.updated_at,
+SELECT t.id, t.project_id, t.sprint_id, t.assignee_id, t.description, t.status, t.created_at, t.updated_at,
        u.username as assignee_username, u.first_name as assignee_first_name, u.last_name as assignee_last_name,
        p.owner_id, owner.username as owner_username, owner.email as owner_email, owner.first_name as owner_first_name, owner.last_name as owner_last_name
 FROM tasks t
@@ -9,7 +9,7 @@ JOIN users owner ON p.owner_id = owner.id
 WHERE t.id = $1;
 
 -- name: ListTasksByProject :many
-SELECT t.id, t.project_id, t.sprint_id, t.assignee_id, t.title, t.description, t.status, t.created_at, t.updated_at,
+SELECT t.id, t.project_id, t.sprint_id, t.assignee_id, t.description, t.status, t.created_at, t.updated_at,
        u.username as assignee_username, u.first_name as assignee_first_name, u.last_name as assignee_last_name,
        p.owner_id, owner.username as owner_username, owner.email as owner_email, owner.first_name as owner_first_name, owner.last_name as owner_last_name
 FROM tasks t
@@ -21,7 +21,7 @@ ORDER BY t.created_at DESC
 LIMIT $2 OFFSET $3;
 
 -- name: ListTasksBySprint :many
-SELECT t.id, t.project_id, t.sprint_id, t.assignee_id, t.title, t.description, t.status, t.created_at, t.updated_at,
+SELECT t.id, t.project_id, t.sprint_id, t.assignee_id, t.description, t.status, t.created_at, t.updated_at,
        u.username as assignee_username, u.first_name as assignee_first_name, u.last_name as assignee_last_name,
        p.owner_id, owner.username as owner_username, owner.email as owner_email, owner.first_name as owner_first_name, owner.last_name as owner_last_name
 FROM tasks t
@@ -33,21 +33,21 @@ ORDER BY t.created_at DESC
 LIMIT $2 OFFSET $3;
 
 -- name: CreateTask :one
-INSERT INTO tasks (project_id, sprint_id, assignee_id, title, description, status)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, project_id, sprint_id, assignee_id, title, description, status, created_at, updated_at;
+INSERT INTO tasks (project_id, sprint_id, assignee_id, description, status)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, project_id, sprint_id, assignee_id, description, status, created_at, updated_at;
 
 -- name: UpdateTask :one
 UPDATE tasks
-SET title = $2, description = $3, assignee_id = $4, updated_at = now()
+SET description = $2, assignee_id = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, sprint_id, assignee_id, title, description, status, created_at, updated_at;
+RETURNING id, project_id, sprint_id, assignee_id, description, status, created_at, updated_at;
 
 -- name: UpdateTaskStatus :one
 UPDATE tasks
 SET status = $2, updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, sprint_id, assignee_id, title, description, status, created_at, updated_at;
+RETURNING id, project_id, sprint_id, assignee_id, description, status, created_at, updated_at;
 
 -- name: DeleteTask :exec
 DELETE FROM tasks WHERE id = $1;

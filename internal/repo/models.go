@@ -46,6 +46,14 @@ type ProjectMember struct {
 	JoinedAt  time.Time `json:"joinedAt"`
 }
 
+type RefreshToken struct {
+	ID        uuid.UUID `json:"id"`
+	UserID    uuid.UUID `json:"userId"`
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 type Sprint struct {
 	ID          uuid.UUID `json:"id"`
 	ProjectID   uuid.UUID `json:"projectId"`
@@ -64,7 +72,6 @@ type Task struct {
 	ProjectID   uuid.UUID   `json:"projectId"`
 	SprintID    pgtype.UUID `json:"sprintId"`
 	AssigneeID  pgtype.UUID `json:"assigneeId"`
-	Title       string      `json:"title"`
 	Description *string     `json:"description"`
 	Status      int32       `json:"status"`
 	CreatedAt   time.Time   `json:"createdAt"`
