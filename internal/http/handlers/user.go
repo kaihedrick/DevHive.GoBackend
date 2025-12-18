@@ -139,6 +139,7 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "Invalid user ID")
 		return
 	}
+
 	user, err := h.queries.GetUserByID(r.Context(), userUUID)
 	if err != nil {
 		response.NotFound(w, "User not found")

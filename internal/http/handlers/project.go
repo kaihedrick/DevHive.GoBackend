@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"devhive-backend/internal/http/middleware"
 	"devhive-backend/internal/http/response"
@@ -26,6 +27,11 @@ func NewProjectHandler(queries *repo.Queries) *ProjectHandler {
 type CreateProjectRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+}
+
+// JoinProjectRequest represents the join-project by code request
+type JoinProjectRequest struct {
+	ProjectID string `json:"projectId"`
 }
 
 // UpdateProjectRequest represents the project update request
@@ -161,6 +167,79 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// JoinProject handles joining a project by project code/ID
+// This endpoint requires authentication but does not require prior membership.
+// It adds the authenticated user as a member of the target project (idempotently).
+func (h *ProjectHandler) JoinProject(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		response.Unauthorized(w, "User ID not found in context")
+		return
+	}
+
+	var req JoinProjectRequest
+	if !response.Decode(w, r, &req) {
+		return
+	}
+
+	if strings.TrimSpace(req.ProjectID) == "" {
+		response.BadRequest(w, "Project ID is required")
+		return
+	}
+
+	projectUUID, err := uuid.Parse(req.ProjectID)
+	if err != nil {
+		response.BadRequest(w, "Invalid project ID")
+		return
+	}
+
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		response.BadRequest(w, "Invalid user ID")
+		return
+	}
+
+	// Ensure project exists
+	project, err := h.queries.GetProjectByID(r.Context(), projectUUID)
+	if err != nil {
+		response.NotFound(w, "Project not found")
+		return
+	}
+
+	// Idempotently add the user as a member
+	if err := h.queries.AddProjectMember(r.Context(), repo.AddProjectMemberParams{
+		ProjectID: projectUUID,
+		UserID:    userUUID,
+		Role:      "member",
+	}); err != nil {
+		response.InternalServerError(w, "Failed to join project")
+		return
+	}
+
+	// Return project details so the frontend can navigate to it
+	response.JSON(w, http.StatusOK, ProjectResponse{
+		ID:          project.ID.String(),
+		OwnerID:     project.OwnerID.String(),
+		Name:        project.Name,
+		Description: *project.Description,
+		CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		Owner: struct {
+			ID        string `json:"id"`
+			Username  string `json:"username"`
+			Email     string `json:"email"`
+			FirstName string `json:"firstName"`
+			LastName  string `json:"lastName"`
+		}{
+			ID:        project.OwnerID.String(),
+			Username:  project.OwnerUsername,
+			Email:     project.OwnerEmail,
+			FirstName: project.OwnerFirstName,
+			LastName:  project.OwnerLastName,
+		},
+	})
+}
+
 // GetProject handles getting a project by ID
 func (h *ProjectHandler) GetProject(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
@@ -222,6 +301,102 @@ func (h *ProjectHandler) GetProject(w http.ResponseWriter, r *http.Request) {
 			LastName:  project.OwnerLastName,
 		},
 	})
+}
+
+// GetProjectBundle handles getting a project with optional includes (members, owner, etc.)
+func (h *ProjectHandler) GetProjectBundle(w http.ResponseWriter, r *http.Request) {
+	_, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		response.Unauthorized(w, "User ID not found in context")
+		return
+	}
+
+	projectID := chi.URLParam(r, "projectId")
+	if projectID == "" {
+		response.BadRequest(w, "Project ID is required")
+		return
+	}
+
+	// Parse include parameter
+	include := r.URL.Query().Get("include")
+	includeMembers := strings.Contains(include, "members")
+	includeOwner := strings.Contains(include, "owner")
+	includeSprints := strings.Contains(include, "sprints")
+	includeTasks := strings.Contains(include, "tasks")
+
+	projectUUID, err := uuid.Parse(projectID)
+	if err != nil {
+		response.BadRequest(w, "Invalid project ID")
+		return
+	}
+
+	// Get project
+	project, err := h.queries.GetProjectByID(r.Context(), projectUUID)
+	if err != nil {
+		response.NotFound(w, "Project not found")
+		return
+	}
+
+	// Build response bundle
+	bundle := map[string]interface{}{
+		"project": ProjectResponse{
+			ID:          project.ID.String(),
+			OwnerID:     project.OwnerID.String(),
+			Name:        project.Name,
+			Description: *project.Description,
+			CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		},
+	}
+
+	// Add owner if requested
+	if includeOwner {
+		bundle["owner"] = map[string]interface{}{
+			"id":        project.OwnerID.String(),
+			"username":  project.OwnerUsername,
+			"email":     project.OwnerEmail,
+			"firstName": project.OwnerFirstName,
+			"lastName":  project.OwnerLastName,
+		}
+	}
+
+	// Add members if requested
+	if includeMembers {
+		members, err := h.queries.GetProjectMembers(r.Context(), projectUUID)
+		if err == nil {
+			bundle["members"] = members
+		}
+	}
+
+	// Add sprints if requested
+	if includeSprints {
+		sprints, err := h.queries.ListSprintsByProject(r.Context(), repo.ListSprintsByProjectParams{
+			ProjectID: projectUUID,
+			Limit:     50,
+			Offset:    0,
+		})
+		if err == nil {
+			bundle["sprints"] = sprints
+		}
+	}
+
+	// Add tasks if requested
+	if includeTasks {
+		tasks, err := h.queries.ListTasksByProject(r.Context(), repo.ListTasksByProjectParams{
+			ProjectID: projectUUID,
+			Limit:     50,
+			Offset:    0,
+		})
+		if err == nil {
+			bundle["tasks"] = tasks
+		}
+	}
+
+	// Set caching headers
+	w.Header().Set("Cache-Control", "private, max-age=60")
+	w.Header().Set("ETag", `"`+project.ID.String()+`-`+strconv.FormatInt(project.UpdatedAt.Unix(), 10)+`"`)
+
+	response.JSON(w, http.StatusOK, bundle)
 }
 
 // UpdateProject handles project updates

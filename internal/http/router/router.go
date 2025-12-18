@@ -43,14 +43,14 @@ func Setup(cfg *config.Config, queries *repo.Queries, db interface{}) *chi.Mux {
 	// API routes
 	r.Route("/api", func(api chi.Router) {
 		// Mount v1 API
-		api.Mount("/v1", setupV1Routes(cfg, queries))
+		api.Mount("/v1", setupV1Routes(cfg, queries, db))
 	})
 
 	return r
 }
 
 // setupV1Routes configures the v1 API routes
-func setupV1Routes(cfg *config.Config, queries *repo.Queries) chi.Router {
+func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}) chi.Router {
 	r := chi.NewRouter()
 
 	// Initialize handlers
@@ -61,6 +61,7 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries) chi.Router {
 	taskHandler := handlers.NewTaskHandler(queries)
 	messageHandler := handlers.NewMessageHandler(queries)
 	mailHandler := handlers.NewMailHandler(cfg)
+	migrationHandler := handlers.NewMigrationHandler(queries, db.(*sql.DB))
 
 	// Auth routes (public)
 	r.Route("/auth", func(auth chi.Router) {
@@ -73,6 +74,10 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries) chi.Router {
 	// User routes
 	r.Route("/users", func(users chi.Router) {
 		users.Post("/", userHandler.CreateUser)
+		users.Get("/validate-email", userHandler.ValidateEmail)
+		users.Post("/validate-email", userHandler.ValidateEmail)
+		users.Get("/validate-username", userHandler.ValidateUsername)
+		users.Post("/validate-username", userHandler.ValidateUsername)
 		users.With(middleware.RequireAuth(cfg.JWT.SigningKey)).Get("/me", userHandler.GetMe)
 		users.With(middleware.RequireAuth(cfg.JWT.SigningKey)).Get("/{userId}", userHandler.GetUser)
 	})
@@ -82,7 +87,10 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries) chi.Router {
 		projects.Use(middleware.RequireAuth(cfg.JWT.SigningKey))
 		projects.Get("/", projectHandler.ListProjects)
 		projects.Post("/", projectHandler.CreateProject)
+		// Join by project code/ID (must be defined before /{projectId} routes)
+		projects.Post("/join", projectHandler.JoinProject)
 		projects.Get("/{projectId}", projectHandler.GetProject)
+		projects.Get("/{projectId}/bundle", projectHandler.GetProjectBundle)
 		projects.Patch("/{projectId}", projectHandler.UpdateProject)
 		projects.Delete("/{projectId}", projectHandler.DeleteProject)
 
@@ -134,6 +142,16 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries) chi.Router {
 	r.Route("/mail", func(mail chi.Router) {
 		mail.Use(middleware.RequireAuth(cfg.JWT.SigningKey))
 		mail.Post("/send", mailHandler.SendEmail)
+	})
+
+	// Migration routes (admin only - no auth for now, but should be protected in production)
+	r.Route("/migrations", func(migrations chi.Router) {
+		migrations.Post("/run", migrationHandler.RunMigration)
+		migrations.Post("/reset", migrationHandler.ResetDatabase)
+		migrations.Get("/list", migrationHandler.ListMigrations)
+		migrations.Post("/rebuild-deploy", migrationHandler.RebuildAndDeploy)
+		migrations.Post("/run-and-deploy", migrationHandler.RunMigrationAndDeploy)
+		migrations.Get("/health", migrationHandler.HealthCheck)
 	})
 
 	// Legacy route shims (temporary for backward compatibility)
