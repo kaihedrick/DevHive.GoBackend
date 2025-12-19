@@ -468,7 +468,7 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user has access to project
+	// Check if user is the project owner (only owners can edit project title and description)
 	projectUUID, err := uuid.Parse(projectID)
 	if err != nil {
 		response.BadRequest(w, "Invalid project ID")
@@ -479,12 +479,18 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "Invalid user ID")
 		return
 	}
-	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
+
+	// Verify user is the project owner
+	isOwner, err := h.queries.CheckProjectOwner(r.Context(), repo.CheckProjectOwnerParams{
 		ID:      projectUUID,
 		OwnerID: userUUID,
 	})
-	if err != nil || !hasAccess {
-		response.Forbidden(w, "Access denied to project")
+	if err != nil {
+		response.InternalServerError(w, "Failed to verify project ownership")
+		return
+	}
+	if !isOwner {
+		response.Forbidden(w, "Only project owners can edit project title and description")
 		return
 	}
 
@@ -563,13 +569,19 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		OwnerID: userUUID,
 	})
 	if err != nil {
+		log.Printf("ERROR: CheckProjectOwner failed for project %s, user %s: %v",
+			projectUUID.String(), userUUID.String(), err)
 		response.InternalServerError(w, "Failed to verify project ownership")
 		return
 	}
 	if !isOwner {
+		log.Printf("WARN: Non-owner user %s attempted to delete project %s",
+			userUUID.String(), projectUUID.String())
 		response.Forbidden(w, "Only project owners can delete projects")
 		return
 	}
+	log.Printf("INFO: Project owner %s deleting project %s",
+		userUUID.String(), projectUUID.String())
 
 	// Verify project exists before deletion
 	_, err = h.queries.GetProjectByID(r.Context(), projectUUID)
