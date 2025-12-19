@@ -134,11 +134,11 @@ func (l *NotifyListener) handleNotification(notification *pgconn.Notification) {
 		"timestamp": payload.Timestamp,
 	}
 
-	// For project deletions, broadcast to ALL clients (not just project-scoped)
+	// For project deletions and creations, broadcast to ALL clients (not just project-scoped)
 	// This ensures all users' project lists are invalidated
-	if payload.Resource == "projects" && payload.Action == "DELETE" {
+	if payload.Resource == "projects" && (payload.Action == "DELETE" || payload.Action == "INSERT") {
 		l.hub.BroadcastToAll("cache_invalidate", messageData)
-		log.Printf("Broadcasted project deletion cache invalidation to all clients: project_id=%s", payload.ProjectID)
+		log.Printf("Broadcasted project %s cache invalidation to all clients: project_id=%s", payload.Action, payload.ProjectID)
 	} else {
 		// For other changes, broadcast project-scoped
 		l.hub.BroadcastToProject(payload.ProjectID, "cache_invalidate", messageData)
