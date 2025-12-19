@@ -77,6 +77,12 @@ SELECT EXISTS(
     WHERE p.id = $1 AND p.owner_id = $2
 ) as is_owner;
 
+-- name: ProjectExists :one
+SELECT EXISTS(
+    SELECT 1 FROM projects p
+    WHERE p.id = $1
+) as exists;
+
 -- name: CreateProjectInvite :one
 INSERT INTO project_invites (project_id, created_by, invite_token, expires_at, max_uses)
 VALUES ($1, $2, $3, $4, $5)

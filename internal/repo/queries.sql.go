@@ -1445,6 +1445,20 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUse
 	return items, nil
 }
 
+const projectExists = `-- name: ProjectExists :one
+SELECT EXISTS(
+    SELECT 1 FROM projects p
+    WHERE p.id = $1
+) as exists
+`
+
+func (q *Queries) ProjectExists(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, projectExists, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const removeProjectMember = `-- name: RemoveProjectMember :exec
 DELETE FROM project_members WHERE project_id = $1 AND user_id = $2
 `

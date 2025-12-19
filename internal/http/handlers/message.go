@@ -443,19 +443,25 @@ func (h *MessageHandler) WebSocketHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if !hasAccess {
-		// Check if project exists
-		_, projectErr := h.queries.GetProjectByID(r.Context(), projectUUID)
-		if projectErr != nil {
+		// Check if project exists (simple check without JOIN)
+		projectExists, existsErr := h.queries.ProjectExists(r.Context(), projectUUID)
+		if existsErr != nil {
+			log.Printf("ERROR: ProjectExists query failed for project %s: %v",
+				projectUUID.String(), existsErr)
+		} else if !projectExists {
 			log.Printf("WARN: Project %s does not exist (user %s)",
 				projectUUID.String(), userUUID.String())
 		} else {
 			// Project exists, check if user is owner
-			isOwner, _ := h.queries.CheckProjectOwner(r.Context(), repo.CheckProjectOwnerParams{
+			isOwner, ownerErr := h.queries.CheckProjectOwner(r.Context(), repo.CheckProjectOwnerParams{
 				ID:      projectUUID,
 				OwnerID: userUUID,
 			})
-			if isOwner {
-				log.Printf("ERROR: Project owner %s denied access to project %s - BUG!",
+			if ownerErr != nil {
+				log.Printf("ERROR: CheckProjectOwner failed for project %s, user %s: %v",
+					projectUUID.String(), userUUID.String(), ownerErr)
+			} else if isOwner {
+				log.Printf("ERROR: Project owner %s denied access to project %s - BUG! CheckProjectAccess returned false but CheckProjectOwner returned true",
 					userUUID.String(), projectUUID.String())
 			} else {
 				log.Printf("WARN: User %s is not owner or member of project %s",
