@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -669,6 +670,9 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 			"timestamp":  time.Now().Format(time.RFC3339),
 		}
 		h.hub.BroadcastToProject(projectUUID.String(), "cache_invalidate", messageData)
+		log.Printf("Explicit broadcast: project_members INSERT for project %s", projectUUID.String())
+	} else {
+		log.Printf("ERROR: Hub is nil, cannot broadcast cache invalidation for project %s", projectUUID.String())
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Member added successfully"})
@@ -730,6 +734,9 @@ func (h *ProjectHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 			"timestamp":  time.Now().Format(time.RFC3339),
 		}
 		h.hub.BroadcastToProject(projectUUID.String(), "cache_invalidate", messageData)
+		log.Printf("Explicit broadcast: project_members DELETE for project %s", projectUUID.String())
+	} else {
+		log.Printf("ERROR: Hub is nil, cannot broadcast cache invalidation for project %s", projectUUID.String())
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Member removed successfully"})
@@ -1037,6 +1044,9 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 			"timestamp":  time.Now().Format(time.RFC3339),
 		}
 		h.hub.BroadcastToProject(invite.ProjectID.String(), "cache_invalidate", messageData)
+		log.Printf("Explicit broadcast: project_members INSERT (via invite) for project %s", invite.ProjectID.String())
+	} else {
+		log.Printf("ERROR: Hub is nil, cannot broadcast cache invalidation for project %s", invite.ProjectID.String())
 	}
 
 	// Get project details

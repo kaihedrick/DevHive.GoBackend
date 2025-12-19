@@ -436,7 +436,32 @@ func (h *MessageHandler) WebSocketHandler(w http.ResponseWriter, r *http.Request
 		ID:      projectUUID,
 		OwnerID: userUUID,
 	})
-	if err != nil || !hasAccess {
+	if err != nil {
+		log.Printf("ERROR: CheckProjectAccess failed for project %s, user %s: %v",
+			projectUUID.String(), userUUID.String(), err)
+		http.Error(w, "Failed to verify project access", http.StatusInternalServerError)
+		return
+	}
+	if !hasAccess {
+		// Check if project exists
+		_, projectErr := h.queries.GetProjectByID(r.Context(), projectUUID)
+		if projectErr != nil {
+			log.Printf("WARN: Project %s does not exist (user %s)",
+				projectUUID.String(), userUUID.String())
+		} else {
+			// Project exists, check if user is owner
+			isOwner, _ := h.queries.CheckProjectOwner(r.Context(), repo.CheckProjectOwnerParams{
+				ID:      projectUUID,
+				OwnerID: userUUID,
+			})
+			if isOwner {
+				log.Printf("ERROR: Project owner %s denied access to project %s - BUG!",
+					userUUID.String(), projectUUID.String())
+			} else {
+				log.Printf("WARN: User %s is not owner or member of project %s",
+					userUUID.String(), projectUUID.String())
+			}
+		}
 		http.Error(w, "Access denied to project", http.StatusForbidden)
 		return
 	}
@@ -464,6 +489,32 @@ func (h *MessageHandler) WebSocketHandler(w http.ResponseWriter, r *http.Request
 	// Start goroutines for reading and writing
 	go client.ReadPump()
 	go client.WritePump()
+}
+
+// GetWebSocketStatus returns connection status for debugging
+func (h *MessageHandler) GetWebSocketStatus(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectId")
+	if projectID == "" {
+		response.BadRequest(w, "Project ID required")
+		return
+	}
+
+	totalClients, matchingClients, userIDs := h.hub.GetProjectConnections(projectID)
+
+	clientDetails := make([]map[string]string, len(userIDs))
+	for i, userID := range userIDs {
+		clientDetails[i] = map[string]string{
+			"user_id":    userID,
+			"project_id": projectID,
+		}
+	}
+
+	response.JSON(w, http.StatusOK, map[string]interface{}{
+		"project_id":       projectID,
+		"total_clients":    totalClients,
+		"matching_clients": matchingClients,
+		"clients":          clientDetails,
+	})
 }
 
 // validateJWTToken validates a JWT token and returns the user ID

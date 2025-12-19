@@ -105,10 +105,17 @@ func (h *Hub) BroadcastToProject(projectID string, messageType string, data inte
 	}
 
 	h.mutex.RLock()
+	totalClients := len(h.clients)
+	matchingClients := 0
+	clientsToNotify := []string{} // Track user IDs for logging
+
 	for client := range h.clients {
 		if client.projectID == projectID {
+			matchingClients++
+			clientsToNotify = append(clientsToNotify, client.userID)
 			select {
 			case client.send <- msgBytes:
+				// Message sent successfully
 			default:
 				close(client.send)
 				delete(h.clients, client)
@@ -116,6 +123,28 @@ func (h *Hub) BroadcastToProject(projectID string, messageType string, data inte
 		}
 	}
 	h.mutex.RUnlock()
+
+	log.Printf("Broadcast: type=%s, project=%s, total_clients=%d, matching=%d, users=%v",
+		messageType, projectID, totalClients, matchingClients, clientsToNotify)
+}
+
+// GetProjectConnections returns connection status for a specific project
+func (h *Hub) GetProjectConnections(projectID string) (int, int, []string) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	totalClients := len(h.clients)
+	matchingClients := 0
+	userIDs := []string{}
+
+	for client := range h.clients {
+		if client.projectID == projectID {
+			matchingClients++
+			userIDs = append(userIDs, client.userID)
+		}
+	}
+
+	return totalClients, matchingClients, userIDs
 }
 
 // BroadcastToAll sends a message to all connected clients

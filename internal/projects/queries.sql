@@ -65,11 +65,11 @@ WHERE pm.project_id = $1
 ORDER BY joined_at;
 
 -- name: CheckProjectAccess :one
-SELECT EXISTS(
-    SELECT 1 FROM projects p
-    LEFT JOIN project_members pm ON p.id = pm.project_id
-    WHERE p.id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)
-) as has_access;
+-- Check if user is project owner OR project member
+SELECT (
+    EXISTS(SELECT 1 FROM projects p WHERE p.id = $1 AND p.owner_id = $2) OR
+    EXISTS(SELECT 1 FROM project_members pm WHERE pm.project_id = $1 AND pm.user_id = $2)
+)::boolean as has_access;
 
 -- name: CheckProjectOwner :one
 SELECT EXISTS(

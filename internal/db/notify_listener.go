@@ -119,6 +119,9 @@ func (l *NotifyListener) handleNotification(notification *pgconn.Notification) {
 		return
 	}
 
+	log.Printf("NOTIFY received: resource=%s, action=%s, project_id=%s, id=%s",
+		payload.Resource, payload.Action, payload.ProjectID, payload.ID)
+
 	// Validate payload has required fields
 	if payload.ProjectID == "" {
 		log.Printf("Notification missing project_id, skipping")
@@ -127,11 +130,11 @@ func (l *NotifyListener) handleNotification(notification *pgconn.Notification) {
 
 	// Build message data
 	messageData := map[string]interface{}{
-		"resource":  payload.Resource,
-		"id":        payload.ID,
-		"action":    payload.Action,
+		"resource":   payload.Resource,
+		"id":         payload.ID,
+		"action":     payload.Action,
 		"project_id": payload.ProjectID,
-		"timestamp": payload.Timestamp,
+		"timestamp":  payload.Timestamp,
 	}
 
 	// For project deletions and creations, broadcast to ALL clients (not just project-scoped)
@@ -163,4 +166,3 @@ func min(a, b time.Duration) time.Duration {
 	}
 	return b
 }
-

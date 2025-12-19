@@ -124,6 +124,9 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}, hu
 		// Project messages
 		projects.Get("/{projectId}/messages", messageHandler.ListMessagesByProject)
 		projects.Post("/{projectId}/messages", messageHandler.CreateMessage)
+
+		// WebSocket status (for debugging)
+		projects.Get("/{projectId}/ws/status", messageHandler.GetWebSocketStatus)
 	})
 
 	// Protected invite accept route (auth required)
