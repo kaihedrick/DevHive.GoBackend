@@ -51,10 +51,26 @@ func (h *MigrationHandler) RunMigration(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Read the migration script
-	scriptPath := filepath.Join("migrations", req.ScriptName)
-	scriptContent, err := ioutil.ReadFile(scriptPath)
+	// Try multiple possible paths for migrations directory
+	migrationsDirs := []string{
+		"cmd/devhive-api/migrations",
+		"./cmd/devhive-api/migrations",
+		"migrations",
+		"./migrations",
+	}
+
+	var scriptContent []byte
+	var err error
+	for _, dir := range migrationsDirs {
+		scriptPath := filepath.Join(dir, req.ScriptName)
+		scriptContent, err = ioutil.ReadFile(scriptPath)
+		if err == nil {
+			break
+		}
+	}
+
 	if err != nil {
-		response.BadRequest(w, fmt.Sprintf("failed to read script %s: %v", req.ScriptName, err))
+		response.BadRequest(w, fmt.Sprintf("failed to read script %s (tried paths: %v): %v", req.ScriptName, migrationsDirs, err))
 		return
 	}
 

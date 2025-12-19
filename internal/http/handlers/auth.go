@@ -104,8 +104,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   int(h.cfg.JWT.RefreshTokenExpiration.Seconds()),
 		HttpOnly: true,
-		Secure:   r.TLS != nil, // Only send over HTTPS in production
-		SameSite: http.SameSiteStrictMode,
+		Secure:   true, // Always true in production (HTTPS required for SameSite=None)
+		SameSite: http.SameSiteNoneMode, // NoneMode required for cross-origin requests
 	})
 
 	response.JSON(w, http.StatusOK, LoginResponse{
@@ -185,8 +185,8 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   int(h.cfg.JWT.RefreshTokenExpiration.Seconds()),
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
-		SameSite: http.SameSiteStrictMode,
+		Secure:   true, // Always true in production (HTTPS required for SameSite=None)
+		SameSite: http.SameSiteNoneMode, // NoneMode required for cross-origin requests
 	})
 
 	response.JSON(w, http.StatusOK, LoginResponse{
@@ -295,8 +295,8 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1, // Delete cookie
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
-		SameSite: http.SameSiteStrictMode,
+		Secure:   true, // Always true in production (HTTPS required for SameSite=None)
+		SameSite: http.SameSiteNoneMode, // NoneMode required for cross-origin requests
 	})
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Logged out successfully"})
