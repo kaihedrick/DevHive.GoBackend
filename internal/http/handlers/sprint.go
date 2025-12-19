@@ -234,17 +234,36 @@ func (h *SprintHandler) CreateSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get full sprint details with owner
+	fullSprint, err := h.queries.GetSprintByID(r.Context(), sprint.ID)
+	if err != nil {
+		response.InternalServerError(w, "Failed to get created sprint details")
+		return
+	}
+
+	descriptionResp := ""
+	if fullSprint.Description != nil {
+		descriptionResp = *fullSprint.Description
+	}
+
 	response.JSON(w, http.StatusCreated, SprintResponse{
-		ID:          sprint.ID.String(),
-		ProjectID:   sprint.ProjectID.String(),
-		Name:        sprint.Name,
-		Description: *sprint.Description,
-		StartDate:   sprint.StartDate.Format("2006-01-02T15:04:05Z07:00"),
-		EndDate:     sprint.EndDate.Format("2006-01-02T15:04:05Z07:00"),
-		IsCompleted: sprint.IsCompleted,
-		IsStarted:   sprint.IsStarted,
-		CreatedAt:   sprint.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:   sprint.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		ID:          fullSprint.ID.String(),
+		ProjectID:   fullSprint.ProjectID.String(),
+		Name:        fullSprint.Name,
+		Description: descriptionResp,
+		StartDate:   fullSprint.StartDate.Format("2006-01-02T15:04:05Z07:00"),
+		EndDate:     fullSprint.EndDate.Format("2006-01-02T15:04:05Z07:00"),
+		IsCompleted: fullSprint.IsCompleted,
+		IsStarted:   fullSprint.IsStarted,
+		CreatedAt:   fullSprint.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:   fullSprint.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		Owner: OwnerInfo{
+			ID:        fullSprint.OwnerID.String(),
+			Username:  fullSprint.OwnerUsername,
+			Email:     fullSprint.OwnerEmail,
+			FirstName: fullSprint.OwnerFirstName,
+			LastName:  fullSprint.OwnerLastName,
+		},
 	})
 }
 
@@ -389,7 +408,7 @@ func (h *SprintHandler) UpdateSprint(w http.ResponseWriter, r *http.Request) {
 		endDate = parsedEndDate
 	}
 
-	sprint, err := h.queries.UpdateSprint(r.Context(), repo.UpdateSprintParams{
+	_, err = h.queries.UpdateSprint(r.Context(), repo.UpdateSprintParams{
 		ID:          sprintUUID,
 		Name:        name,
 		Description: &description,
@@ -401,17 +420,36 @@ func (h *SprintHandler) UpdateSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get full sprint details with owner
+	fullSprint, err := h.queries.GetSprintByID(r.Context(), sprintUUID)
+	if err != nil {
+		response.InternalServerError(w, "Failed to get updated sprint details")
+		return
+	}
+
+	descriptionResp := ""
+	if fullSprint.Description != nil {
+		descriptionResp = *fullSprint.Description
+	}
+
 	response.JSON(w, http.StatusOK, SprintResponse{
-		ID:          sprint.ID.String(),
-		ProjectID:   sprint.ProjectID.String(),
-		Name:        sprint.Name,
-		Description: *sprint.Description,
-		StartDate:   sprint.StartDate.Format("2006-01-02T15:04:05Z07:00"),
-		EndDate:     sprint.EndDate.Format("2006-01-02T15:04:05Z07:00"),
-		IsCompleted: sprint.IsCompleted,
-		IsStarted:   sprint.IsStarted,
-		CreatedAt:   sprint.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:   sprint.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		ID:          fullSprint.ID.String(),
+		ProjectID:   fullSprint.ProjectID.String(),
+		Name:        fullSprint.Name,
+		Description: descriptionResp,
+		StartDate:   fullSprint.StartDate.Format("2006-01-02T15:04:05Z07:00"),
+		EndDate:     fullSprint.EndDate.Format("2006-01-02T15:04:05Z07:00"),
+		IsCompleted: fullSprint.IsCompleted,
+		IsStarted:   fullSprint.IsStarted,
+		CreatedAt:   fullSprint.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:   fullSprint.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		Owner: OwnerInfo{
+			ID:        fullSprint.OwnerID.String(),
+			Username:  fullSprint.OwnerUsername,
+			Email:     fullSprint.OwnerEmail,
+			FirstName: fullSprint.OwnerFirstName,
+			LastName:  fullSprint.OwnerLastName,
+		},
 	})
 }
 

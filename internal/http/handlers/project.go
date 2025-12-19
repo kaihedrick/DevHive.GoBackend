@@ -209,11 +209,13 @@ func (h *ProjectHandler) JoinProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Idempotently add the user as a member
+	// CRITICAL: Always set role to "member" - never allow "owner"
+	// Project ownership is determined by projects.owner_id, not project_members.role
+	// Users joining via invite code should never become project owners
 	if err := h.queries.AddProjectMember(r.Context(), repo.AddProjectMemberParams{
 		ProjectID: projectUUID,
 		UserID:    userUUID,
-		Role:      "member",
+		Role:      "member", // Always "member" - owner role is not allowed
 	}); err != nil {
 		response.InternalServerError(w, "Failed to join project")
 		return
@@ -538,6 +540,28 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 	role := r.URL.Query().Get("role")
 	if role == "" {
 		role = "member"
+	}
+
+	// CRITICAL: Prevent setting role to "owner"
+	// Owner is determined by projects.owner_id, not project_members.role
+	if strings.EqualFold(role, "owner") {
+		response.BadRequest(w, "Cannot set role to 'owner'. Owner is determined by project ownership.")
+		return
+	}
+
+	// Validate role is one of allowed values
+	allowedRoles := []string{"member", "admin", "viewer"}
+	roleValid := false
+	for _, allowedRole := range allowedRoles {
+		if strings.EqualFold(role, allowedRole) {
+			role = allowedRole // Normalize case
+			roleValid = true
+			break
+		}
+	}
+	if !roleValid {
+		response.BadRequest(w, "Invalid role. Allowed roles: member, admin, viewer")
+		return
 	}
 
 	// Check if user has access to project

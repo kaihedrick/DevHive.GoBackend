@@ -382,53 +382,15 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get project owner information
-	project, err := h.queries.GetProjectByID(r.Context(), projectUUID)
+	// Get full task details with assignee and owner
+	fullTask, err := h.queries.GetTaskByID(r.Context(), task.ID)
 	if err != nil {
-		response.InternalServerError(w, "Failed to get project owner")
+		response.InternalServerError(w, "Failed to get created task details")
 		return
 	}
 
-	// Get owner details
-	owner, err := h.queries.GetUserByID(r.Context(), project.OwnerID)
-	if err != nil {
-		response.InternalServerError(w, "Failed to get owner details")
-		return
-	}
-
-	description := ""
-	if task.Description != nil {
-		description = *task.Description
-	}
-
-	taskResp := TaskResponse{
-		ID:          task.ID.String(),
-		ProjectID:   task.ProjectID.String(),
-		Description: description,
-		Status:      task.Status,
-		CreatedAt:   task.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:   task.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		Owner: OwnerInfo{
-			ID:        owner.ID.String(),
-			Username:  owner.Username,
-			Email:     owner.Email,
-			FirstName: owner.FirstName,
-			LastName:  owner.LastName,
-		},
-	}
-
-	// Add sprint ID if assigned
-	if task.SprintID.Valid {
-		sprintUUID := uuid.UUID(task.SprintID.Bytes)
-		taskResp.SprintID = sprintUUID.String()
-	}
-
-	// Add assignee ID if assigned
-	if task.AssigneeID.Valid {
-		assigneeUUID := uuid.UUID(task.AssigneeID.Bytes)
-		taskResp.AssigneeID = assigneeUUID.String()
-	}
-
+	// Build complete TaskResponse with Assignee object
+	taskResp := buildTaskResponse(fullTask)
 	response.JSON(w, http.StatusCreated, taskResp)
 }
 
@@ -472,6 +434,13 @@ func (h *TaskHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Build complete TaskResponse using helper function
+	taskResp := buildTaskResponse(task)
+	response.JSON(w, http.StatusOK, taskResp)
+}
+
+// buildTaskResponse converts GetTaskByIDRow to TaskResponse
+func buildTaskResponse(task repo.GetTaskByIDRow) TaskResponse {
 	description := ""
 	if task.Description != nil {
 		description = *task.Description
@@ -523,7 +492,7 @@ func (h *TaskHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	response.JSON(w, http.StatusOK, taskResp)
+	return taskResp
 }
 
 // UpdateTask handles task updates
@@ -580,12 +549,18 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		description = *req.Description
 	}
 	if req.AssigneeID != nil {
-		// TODO: Validate assignee is member of project
-		// For now, we'll skip assignee assignment
-		_ = req.AssigneeID // Suppress unused variable warning
+		assigneeIDParsed, err := uuid.Parse(*req.AssigneeID)
+		if err != nil {
+			response.BadRequest(w, "Invalid assignee ID format")
+			return
+		}
+		assigneeID = pgtype.UUID{Bytes: assigneeIDParsed, Valid: true}
+	} else if req.AssigneeID == nil && req.Description == nil {
+		// If both are nil, allow clearing assignee
+		assigneeID = pgtype.UUID{Valid: false}
 	}
 
-	task, err := h.queries.UpdateTask(r.Context(), repo.UpdateTaskParams{
+	_, err = h.queries.UpdateTask(r.Context(), repo.UpdateTaskParams{
 		ID:          taskUUID,
 		Description: &description,
 		AssigneeID:  assigneeID,
@@ -595,14 +570,16 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, TaskResponse{
-		ID:          task.ID.String(),
-		ProjectID:   task.ProjectID.String(),
-		Description: *task.Description,
-		Status:      task.Status,
-		CreatedAt:   task.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:   task.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	})
+	// Get full task details with assignee and owner
+	fullTask, err := h.queries.GetTaskByID(r.Context(), taskUUID)
+	if err != nil {
+		response.InternalServerError(w, "Failed to get updated task details")
+		return
+	}
+
+	// Build complete TaskResponse
+	taskResp := buildTaskResponse(fullTask)
+	response.JSON(w, http.StatusOK, taskResp)
 }
 
 // UpdateTaskStatus handles task status updates
@@ -651,7 +628,7 @@ func (h *TaskHandler) UpdateTaskStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err := h.queries.UpdateTaskStatus(r.Context(), repo.UpdateTaskStatusParams{
+	_, err = h.queries.UpdateTaskStatus(r.Context(), repo.UpdateTaskStatusParams{
 		ID:     taskUUID,
 		Status: req.Status,
 	})
@@ -660,14 +637,16 @@ func (h *TaskHandler) UpdateTaskStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, TaskResponse{
-		ID:          task.ID.String(),
-		ProjectID:   task.ProjectID.String(),
-		Description: *task.Description,
-		Status:      task.Status,
-		CreatedAt:   task.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:   task.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	})
+	// Get full task details with assignee and owner
+	fullTask, err := h.queries.GetTaskByID(r.Context(), taskUUID)
+	if err != nil {
+		response.InternalServerError(w, "Failed to get updated task details")
+		return
+	}
+
+	// Build complete TaskResponse
+	taskResp := buildTaskResponse(fullTask)
+	response.JSON(w, http.StatusOK, taskResp)
 }
 
 // DeleteTask handles task deletion
