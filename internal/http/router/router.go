@@ -141,9 +141,10 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}, hu
 		messages.Use(middleware.RequireAuth(cfg.JWT.SigningKey))
 		messages.Post("/", messageHandler.CreateMessage)
 		messages.Get("/", messageHandler.ListMessages)
-		// WebSocket route - JWT auth is handled in WebSocketHandler itself
-		messages.Get("/ws", messageHandler.WebSocketHandler)
 	})
+
+	// WebSocket route - separate route without middleware (auth handled in WebSocketHandler itself)
+	r.Get("/messages/ws", messageHandler.WebSocketHandler)
 
 	// Mail routes
 	r.Route("/mail", func(mail chi.Router) {
@@ -156,6 +157,7 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}, hu
 		migrations.Post("/run", migrationHandler.RunMigration)
 		migrations.Post("/reset", migrationHandler.ResetDatabase)
 		migrations.Get("/list", migrationHandler.ListMigrations)
+		migrations.Get("/verify", migrationHandler.VerifyMigration)
 		migrations.Post("/rebuild-deploy", migrationHandler.RebuildAndDeploy)
 		migrations.Post("/run-and-deploy", migrationHandler.RunMigrationAndDeploy)
 		migrations.Get("/health", migrationHandler.HealthCheck)
