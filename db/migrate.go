@@ -2,16 +2,99 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
+	"io/ioutil"
 	"log"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 )
 
 // RunMigrations runs database migrations using SQL files
 func RunMigrations(db *sql.DB) error {
 	log.Println("Starting database migrations...")
 
-	// Note: This project uses sqlc for database operations
-	// Database schema is managed through SQL migration files
-	// See cmd/devhive-api/migrations/ for migration files
+	// Create migrations tracking table if it doesn't exist
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version VARCHAR(255) PRIMARY KEY,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
+
+	// Read all migration files
+	// Try multiple possible paths for migrations directory
+	migrationsDirs := []string{
+		"cmd/devhive-api/migrations",
+		"./cmd/devhive-api/migrations",
+		"migrations",
+		"./migrations",
+	}
+
+	var migrationsDir string
+	var entries []os.FileInfo
+	for _, dir := range migrationsDirs {
+		var err error
+		entries, err = ioutil.ReadDir(dir)
+		if err == nil {
+			migrationsDir = dir
+			break
+		}
+	}
+
+	if migrationsDir == "" {
+		return fmt.Errorf("could not find migrations directory (tried: %v)", migrationsDirs)
+	}
+
+	// Filter and sort migration files
+	var migrationFiles []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sql") {
+			migrationFiles = append(migrationFiles, entry.Name())
+		}
+	}
+	sort.Strings(migrationFiles)
+
+	// Apply each migration
+	for _, filename := range migrationFiles {
+		// Check if migration has already been applied
+		var count int
+		err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version = $1", filename).Scan(&count)
+		if err != nil {
+			return fmt.Errorf("failed to check migration status: %w", err)
+		}
+
+		if count > 0 {
+			log.Printf("Migration %s already applied, skipping", filename)
+			continue
+		}
+
+		// Read migration file
+		migrationPath := filepath.Join(migrationsDir, filename)
+		migrationSQL, err := ioutil.ReadFile(migrationPath)
+		if err != nil {
+			return fmt.Errorf("failed to read migration %s: %w", filename, err)
+		}
+
+		// Execute migration
+		log.Printf("Applying migration: %s", filename)
+		_, err = db.Exec(string(migrationSQL))
+		if err != nil {
+			return fmt.Errorf("failed to execute migration %s: %w", filename, err)
+		}
+
+		// Record migration as applied
+		_, err = db.Exec("INSERT INTO schema_migrations (version) VALUES ($1)", filename)
+		if err != nil {
+			return fmt.Errorf("failed to record migration %s: %w", filename, err)
+		}
+
+		log.Printf("Successfully applied migration: %s", filename)
+	}
 
 	log.Println("Database migrations completed successfully")
 	return nil
