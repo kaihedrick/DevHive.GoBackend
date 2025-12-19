@@ -125,7 +125,7 @@ func (l *NotifyListener) handleNotification(notification *pgconn.Notification) {
 		return
 	}
 
-	// Broadcast to WebSocket hub (project-scoped)
+	// Build message data
 	messageData := map[string]interface{}{
 		"resource":  payload.Resource,
 		"id":        payload.ID,
@@ -134,8 +134,16 @@ func (l *NotifyListener) handleNotification(notification *pgconn.Notification) {
 		"timestamp": payload.Timestamp,
 	}
 
-	l.hub.BroadcastToProject(payload.ProjectID, "cache_invalidate", messageData)
-	log.Printf("Broadcasted cache invalidation: resource=%s, action=%s, project_id=%s", payload.Resource, payload.Action, payload.ProjectID)
+	// For project deletions, broadcast to ALL clients (not just project-scoped)
+	// This ensures all users' project lists are invalidated
+	if payload.Resource == "projects" && payload.Action == "DELETE" {
+		l.hub.BroadcastToAll("cache_invalidate", messageData)
+		log.Printf("Broadcasted project deletion cache invalidation to all clients: project_id=%s", payload.ProjectID)
+	} else {
+		// For other changes, broadcast project-scoped
+		l.hub.BroadcastToProject(payload.ProjectID, "cache_invalidate", messageData)
+		log.Printf("Broadcasted cache invalidation: resource=%s, action=%s, project_id=%s", payload.Resource, payload.Action, payload.ProjectID)
+	}
 }
 
 // Stop stops the NOTIFY listener

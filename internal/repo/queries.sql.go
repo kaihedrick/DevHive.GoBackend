@@ -50,6 +50,25 @@ func (q *Queries) CheckProjectAccess(ctx context.Context, arg CheckProjectAccess
 	return has_access, err
 }
 
+const checkProjectOwner = `-- name: CheckProjectOwner :one
+SELECT EXISTS(
+    SELECT 1 FROM projects p
+    WHERE p.id = $1 AND p.owner_id = $2
+) as is_owner
+`
+
+type CheckProjectOwnerParams struct {
+	ID      uuid.UUID `json:"id"`
+	OwnerID uuid.UUID `json:"ownerId"`
+}
+
+func (q *Queries) CheckProjectOwner(ctx context.Context, arg CheckProjectOwnerParams) (bool, error) {
+	row := q.db.QueryRow(ctx, checkProjectOwner, arg.ID, arg.OwnerID)
+	var is_owner bool
+	err := row.Scan(&is_owner)
+	return is_owner, err
+}
+
 const createMessage = `-- name: CreateMessage :one
 INSERT INTO messages (project_id, sender_id, content, message_type, parent_message_id)
 VALUES ($1, $2, $3, $4, $5)

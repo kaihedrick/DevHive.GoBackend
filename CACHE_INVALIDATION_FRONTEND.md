@@ -6,6 +6,12 @@ This document describes how to integrate real-time cache invalidation into your 
 
 The backend now supports real-time cache invalidation using PostgreSQL NOTIFY and WebSockets. When data changes in the database (projects, sprints, tasks, project_members), the backend automatically sends cache invalidation notifications to connected WebSocket clients.
 
+**Important**: Resource names in cache invalidation notifications match the database table names exactly:
+- `projects` → `project` resource
+- `sprints` → `sprint` resource  
+- `tasks` → `task` resource
+- `project_members` → `project_members` resource (plural, matching table name)
+
 ## Architecture
 
 ```
@@ -32,7 +38,7 @@ Create a service to manage WebSocket connections for cache invalidation:
 import { queryClient } from '../lib/queryClient';
 
 interface CacheInvalidationPayload {
-  resource: 'project' | 'sprint' | 'task' | 'project_member';
+  resource: 'project' | 'sprint' | 'task' | 'project_members';
   id?: string;
   action: 'INSERT' | 'UPDATE' | 'DELETE';
   project_id: string;
@@ -177,10 +183,12 @@ class CacheInvalidationService {
         queryClient.invalidateQueries({ queryKey: ['tasks', 'sprint'] });
         break;
 
-      case 'project_member':
+      case 'project_members':
         // Invalidate project members and project bundle
         queryClient.invalidateQueries({ queryKey: ['projectMembers', project_id] });
         queryClient.invalidateQueries({ queryKey: ['projects', 'bundle', project_id] });
+        // Also invalidate user's project list if they joined/left
+        queryClient.invalidateQueries({ queryKey: ['projects', 'list'] });
         break;
 
       default:
