@@ -8,6 +8,7 @@ import (
 	"devhive-backend/internal/http/handlers"
 	"devhive-backend/internal/http/middleware"
 	"devhive-backend/internal/repo"
+	"devhive-backend/internal/ws"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
@@ -16,7 +17,7 @@ import (
 )
 
 // Setup creates and configures the HTTP router
-func Setup(cfg *config.Config, queries *repo.Queries, db interface{}) *chi.Mux {
+func Setup(cfg *config.Config, queries *repo.Queries, db interface{}, hub *ws.Hub) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -43,14 +44,14 @@ func Setup(cfg *config.Config, queries *repo.Queries, db interface{}) *chi.Mux {
 	// API routes
 	r.Route("/api", func(api chi.Router) {
 		// Mount v1 API
-		api.Mount("/v1", setupV1Routes(cfg, queries, db))
+		api.Mount("/v1", setupV1Routes(cfg, queries, db, hub))
 	})
 
 	return r
 }
 
 // setupV1Routes configures the v1 API routes
-func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}) chi.Router {
+func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}, hub *ws.Hub) chi.Router {
 	r := chi.NewRouter()
 
 	// Initialize handlers
@@ -59,7 +60,7 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}) ch
 	projectHandler := handlers.NewProjectHandler(queries)
 	sprintHandler := handlers.NewSprintHandler(queries)
 	taskHandler := handlers.NewTaskHandler(queries)
-	messageHandler := handlers.NewMessageHandler(queries)
+	messageHandler := handlers.NewMessageHandler(queries, cfg, hub)
 	mailHandler := handlers.NewMailHandler(cfg)
 	migrationHandler := handlers.NewMigrationHandler(queries, db.(*sql.DB))
 
@@ -71,6 +72,10 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}) ch
 		auth.Post("/password/reset-request", authHandler.RequestPasswordReset)
 		auth.Post("/password/reset", authHandler.ResetPassword)
 	})
+
+	// Admin password verification routes (public endpoints for frontend to use)
+	r.Post("/verify-password", authHandler.VerifyPassword)
+	r.Get("/check-auth", authHandler.CheckAuth)
 
 	// User routes
 	r.Route("/users", func(users chi.Router) {
@@ -136,6 +141,7 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}) ch
 		messages.Use(middleware.RequireAuth(cfg.JWT.SigningKey))
 		messages.Post("/", messageHandler.CreateMessage)
 		messages.Get("/", messageHandler.ListMessages)
+		// WebSocket route - JWT auth is handled in WebSocketHandler itself
 		messages.Get("/ws", messageHandler.WebSocketHandler)
 	})
 
@@ -178,7 +184,7 @@ func setupLegacyRoutes(cfg *config.Config, queries *repo.Queries) chi.Router {
 	projectHandler := handlers.NewProjectHandler(queries)
 	sprintHandler := handlers.NewSprintHandler(queries)
 	taskHandler := handlers.NewTaskHandler(queries)
-	messageHandler := handlers.NewMessageHandler(queries)
+	messageHandler := handlers.NewMessageHandler(queries, cfg, ws.GlobalHub)
 	mailHandler := handlers.NewMailHandler(cfg)
 
 	// Legacy route mappings

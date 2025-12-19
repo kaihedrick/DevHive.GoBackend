@@ -29,7 +29,7 @@ type Client struct {
 type Hub struct {
 	clients    map[*Client]bool
 	broadcast  chan []byte
-	register   chan *Client
+	Register   chan *Client // Exported for external registration
 	unregister chan *Client
 	mutex      sync.RWMutex
 }
@@ -37,6 +37,8 @@ type Hub struct {
 // Message represents a WebSocket message
 type Message struct {
 	Type      string      `json:"type"`
+	Resource  string      `json:"resource,omitempty"`  // Resource type: project, sprint, task, project_member
+	Action    string      `json:"action,omitempty"`    // Action: INSERT, UPDATE, DELETE
 	Data      interface{} `json:"data"`
 	ProjectID string      `json:"project_id,omitempty"`
 	UserID    string      `json:"user_id,omitempty"`
@@ -45,10 +47,10 @@ type Message struct {
 // NewHub creates a new WebSocket hub
 func NewHub() *Hub {
 	return &Hub{
-		clients:    make(map[*Client]bool),
-		broadcast:  make(chan []byte),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
+	clients:    make(map[*Client]bool),
+	broadcast:  make(chan []byte),
+	Register:   make(chan *Client),
+	unregister: make(chan *Client),
 	}
 }
 
@@ -56,7 +58,7 @@ func NewHub() *Hub {
 func (h *Hub) Run() {
 	for {
 		select {
-		case client := <-h.register:
+		case client := <-h.Register:
 			h.mutex.Lock()
 			h.clients[client] = true
 			h.mutex.Unlock()
@@ -139,15 +141,15 @@ func HandleConnections(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		hub:       hub,
 	}
 
-	client.hub.register <- client
+	client.hub.Register <- client
 
 	// Start goroutines for reading and writing
-	go client.writePump()
-	go client.readPump()
+	go client.WritePump()
+	go client.ReadPump()
 }
 
-// readPump pumps messages from the WebSocket connection to the hub
-func (c *Client) readPump() {
+// ReadPump pumps messages from the WebSocket connection to the hub (exported)
+func (c *Client) ReadPump() {
 	defer func() {
 		c.hub.unregister <- c
 		c.conn.Close()
@@ -185,8 +187,8 @@ func (c *Client) readPump() {
 	}
 }
 
-// writePump pumps messages from the hub to the WebSocket connection
-func (c *Client) writePump() {
+// WritePump pumps messages from the hub to the WebSocket connection (exported)
+func (c *Client) WritePump() {
 	ticker := time.NewTicker(54 * time.Second)
 	defer func() {
 		ticker.Stop()
@@ -294,11 +296,11 @@ func AuthenticatedHandleConnections(hub *Hub, w http.ResponseWriter, r *http.Req
 		hub:       hub,
 	}
 
-	client.hub.register <- client
+	client.hub.Register <- client
 
 	// Start goroutines for reading and writing
-	go client.writePump()
-	go client.readPump()
+	go client.WritePump()
+	go client.ReadPump()
 }
 
 // validateJWTToken validates a JWT token and returns the user ID

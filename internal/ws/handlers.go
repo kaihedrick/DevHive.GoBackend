@@ -27,10 +27,10 @@ func HandleWS(w http.ResponseWriter, r *http.Request) {
 		hub:  GlobalHub,
 	}
 
-	client.hub.register <- client
+	client.hub.Register <- client
 
-	go client.writePump()
-	go client.readPump()
+	go client.WritePump()
+	go client.ReadPump()
 }
 
 // HandleWSAuth handles authenticated WebSocket connections

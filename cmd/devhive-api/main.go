@@ -13,9 +13,11 @@ import (
 
 	"devhive-backend/db"
 	"devhive-backend/internal/config"
+	dbnotify "devhive-backend/internal/db"
 	"devhive-backend/internal/grpc"
 	"devhive-backend/internal/http/router"
 	"devhive-backend/internal/repo"
+	"devhive-backend/internal/ws"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -64,8 +66,16 @@ func main() {
 	// Initialize repository
 	queries := repo.New(pool)
 
-	// Setup router
-	r := router.Setup(cfg, queries, database)
+	// Start WebSocket hub FIRST (before HTTP server)
+	ws.StartWebSocketHub()
+	log.Println("WebSocket hub started")
+
+	// Start NOTIFY listener with dedicated connection
+	dbnotify.StartNotifyListener(cfg.DatabaseURL, ws.GlobalHub)
+	log.Println("PostgreSQL NOTIFY listener started")
+
+	// Setup router (pass hub to router)
+	r := router.Setup(cfg, queries, database, ws.GlobalHub)
 
 	// Setup gRPC server
 	grpcServer := grpc.New(cfg, queries)

@@ -11,12 +11,13 @@ import (
 
 // Config holds all configuration for the application
 type Config struct {
-	Port        string
-	GRPCPort    string
-	DatabaseURL string
-	JWT         JWTConfig
-	CORS        CORSConfig
-	Mail        MailConfig
+	Port          string
+	GRPCPort      string
+	DatabaseURL   string
+	JWT           JWTConfig
+	CORS          CORSConfig
+	Mail          MailConfig
+	AdminPassword string
 }
 
 // JWTConfig holds JWT-related configuration
@@ -61,6 +62,7 @@ func Load() (*Config, error) {
 			AllowedOrigins:   getEnvSlice("CORS_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173", "http://localhost:8080", "https://d35scdhidypl44.cloudfront.net", "https://devhive.it.com"}),
 			AllowCredentials: getEnvAsBool("CORS_ALLOW_CREDENTIALS", true),
 		},
+		AdminPassword: getEnv("ADMIN_CERTIFICATES_PASSWORD", "jtAppmine2021"),
 		Mail: MailConfig{
 			APIKey: getEnv("MAILGUN_API_KEY", ""),
 			Domain: getEnv("MAILGUN_DOMAIN", ""),

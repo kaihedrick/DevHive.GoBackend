@@ -302,6 +302,54 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Logged out successfully"})
 }
 
+// VerifyPassword handles admin password verification
+func (h *AuthHandler) VerifyPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Password string `json:"password"`
+	}
+	if !response.Decode(w, r, &req) {
+		return
+	}
+
+	// Get admin password from config (fallback to environment variable)
+	adminPassword := h.cfg.AdminPassword
+	if adminPassword == "" {
+		adminPassword = "jtAppmine2021" // Default fallback
+	}
+
+	if req.Password == adminPassword {
+		// Set cookie that expires in 30 days
+		maxAge := 30 * 24 * 60 * 60 // 30 days in seconds
+		http.SetCookie(w, &http.Cookie{
+			Name:     "admin_certificates_verified",
+			Value:    "true",
+			Path:     "/",
+			MaxAge:   maxAge,
+			HttpOnly: true,
+			Secure:   r.TLS != nil, // Secure in production (HTTPS)
+			SameSite: http.SameSiteNoneMode, // NoneMode for cross-origin
+		})
+		response.JSON(w, http.StatusOK, map[string]bool{"success": true})
+		return
+	}
+
+	response.JSON(w, http.StatusUnauthorized, map[string]interface{}{
+		"success": false,
+		"message": "Invalid password",
+	})
+}
+
+// CheckAuth checks if admin is authenticated
+func (h *AuthHandler) CheckAuth(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("admin_certificates_verified")
+	if err != nil || cookie.Value != "true" {
+		response.JSON(w, http.StatusUnauthorized, map[string]bool{"authenticated": false})
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]bool{"authenticated": true})
+}
+
 // generateJWT generates a JWT token for the user
 func (h *AuthHandler) generateJWT(userID string) (string, error) {
 	now := time.Now()

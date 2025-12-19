@@ -22,7 +22,7 @@ type Client struct {
 type Hub struct {
 	clients    map[*Client]bool
 	broadcast  chan []byte
-	register   chan *Client
+	Register   chan *Client // Exported for external registration
 	unregister chan *Client
 	mutex      sync.RWMutex
 }
@@ -30,6 +30,8 @@ type Hub struct {
 // Message represents a WebSocket message
 type Message struct {
 	Type      string      `json:"type"`
+	Resource  string      `json:"resource,omitempty"`  // Resource type: project, sprint, task, project_member
+	Action    string      `json:"action,omitempty"`    // Action: INSERT, UPDATE, DELETE
 	Data      interface{} `json:"data"`
 	ProjectID string      `json:"project_id,omitempty"`
 	UserID    string      `json:"user_id,omitempty"`
@@ -49,7 +51,7 @@ func NewHub() *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan []byte),
-		register:   make(chan *Client),
+		Register:   make(chan *Client),
 		unregister: make(chan *Client),
 	}
 }
@@ -58,7 +60,7 @@ func NewHub() *Hub {
 func (h *Hub) Run() {
 	for {
 		select {
-		case client := <-h.register:
+		case client := <-h.Register:
 			h.mutex.Lock()
 			h.clients[client] = true
 			h.mutex.Unlock()
@@ -102,11 +104,47 @@ func (h *Hub) BroadcastToProject(projectID string, messageType string, data inte
 		return
 	}
 
-	h.broadcast <- msgBytes
+	h.mutex.RLock()
+	for client := range h.clients {
+		if client.projectID == projectID {
+			select {
+			case client.send <- msgBytes:
+			default:
+				close(client.send)
+				delete(h.clients, client)
+			}
+		}
+	}
+	h.mutex.RUnlock()
 }
 
-// readPump pumps messages from the WebSocket connection to the hub
-func (c *Client) readPump() {
+// BroadcastToAll sends a message to all connected clients
+func (h *Hub) BroadcastToAll(messageType string, data interface{}) {
+	msg := Message{
+		Type: messageType,
+		Data: data,
+	}
+
+	msgBytes, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("Error marshaling message: %v", err)
+		return
+	}
+
+	h.mutex.RLock()
+	for client := range h.clients {
+		select {
+		case client.send <- msgBytes:
+		default:
+			close(client.send)
+			delete(h.clients, client)
+		}
+	}
+	h.mutex.RUnlock()
+}
+
+// ReadPump pumps messages from the WebSocket connection to the hub (exported)
+func (c *Client) ReadPump() {
 	defer func() {
 		c.hub.unregister <- c
 		c.conn.Close()
@@ -140,8 +178,8 @@ func (c *Client) readPump() {
 	}
 }
 
-// writePump pumps messages from the hub to the WebSocket connection
-func (c *Client) writePump() {
+// WritePump pumps messages from the hub to the WebSocket connection (exported)
+func (c *Client) WritePump() {
 	ticker := time.NewTicker(54 * time.Second)
 	defer func() {
 		ticker.Stop()
@@ -186,5 +224,16 @@ func (c *Client) handleMessage(msg Message) {
 		log.Printf("Client left project")
 	default:
 		log.Printf("Unknown message type: %s", msg.Type)
+	}
+}
+
+// NewClient creates a new WebSocket client (exported helper function)
+func NewClient(conn *websocket.Conn, userID string, projectID string, hub *Hub) *Client {
+	return &Client{
+		conn:      conn,
+		userID:    userID,
+		projectID: projectID,
+		send:      make(chan []byte, 256),
+		hub:       hub,
 	}
 }

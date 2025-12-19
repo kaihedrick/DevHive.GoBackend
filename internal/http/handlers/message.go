@@ -1,25 +1,34 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 
+	"devhive-backend/internal/config"
 	"devhive-backend/internal/http/middleware"
 	"devhive-backend/internal/http/response"
 	"devhive-backend/internal/repo"
+	"devhive-backend/internal/ws"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type MessageHandler struct {
 	queries *repo.Queries
+	cfg     *config.Config
+	hub     *ws.Hub
 }
 
-func NewMessageHandler(queries *repo.Queries) *MessageHandler {
+func NewMessageHandler(queries *repo.Queries, cfg *config.Config, hub *ws.Hub) *MessageHandler {
 	return &MessageHandler{
 		queries: queries,
+		cfg:     cfg,
+		hub:     hub,
 	}
 }
 
@@ -366,12 +375,122 @@ func (h *MessageHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// WebSocketHandler handles WebSocket connections for real-time messaging
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		// In production, validate against CORS allowed origins
+		origin := r.Header.Get("Origin")
+		for _, allowedOrigin := range []string{"http://localhost:3000", "http://localhost:5173", "https://devhive.it.com"} {
+			if origin == allowedOrigin {
+				return true
+			}
+		}
+		return true // Allow for now, but should be restricted in production
+	},
+}
+
+// WebSocketHandler handles WebSocket connections for real-time messaging and cache invalidation
 func (h *MessageHandler) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement WebSocket handler for real-time messaging
-	// This would typically involve upgrading the HTTP connection to WebSocket
-	// and managing real-time message broadcasting
-	response.JSON(w, http.StatusNotImplemented, map[string]string{
-		"message": "WebSocket messaging not yet implemented",
+	// Extract JWT token from Authorization header or query param
+	token := r.Header.Get("Authorization")
+	if len(token) > 7 && token[:7] == "Bearer " {
+		token = token[7:]
+	}
+	// Fallback to query param if header not present
+	if token == "" {
+		token = r.URL.Query().Get("token")
+	}
+
+	if token == "" {
+		http.Error(w, "Missing authentication token", http.StatusUnauthorized)
+		return
+	}
+
+	// Validate JWT token and extract user_id
+	userID, err := h.validateJWTToken(token)
+	if err != nil {
+		log.Printf("JWT validation error: %v", err)
+		http.Error(w, "Invalid authentication token", http.StatusUnauthorized)
+		return
+	}
+
+	// Extract project_id from query params
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "Missing project_id", http.StatusBadRequest)
+		return
+	}
+
+	// Validate project access (DO NOT trust query parameters)
+	projectUUID, err := uuid.Parse(projectID)
+	if err != nil {
+		http.Error(w, "Invalid project ID", http.StatusBadRequest)
+		return
+	}
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
+		ID:      projectUUID,
+		OwnerID: userUUID,
 	})
+	if err != nil || !hasAccess {
+		http.Error(w, "Access denied to project", http.StatusForbidden)
+		return
+	}
+
+	// Upgrade to WebSocket
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("WebSocket upgrade error: %v", err)
+		return
+	}
+
+	// Create client using the helper function
+	client := ws.NewClient(conn, userID, projectID, h.hub)
+
+	// Register client with hub (using the Register channel)
+	select {
+	case h.hub.Register <- client:
+		// Client registered successfully
+	default:
+		log.Printf("Failed to register WebSocket client: hub Register channel full")
+		conn.Close()
+		return
+	}
+
+	// Start goroutines for reading and writing
+	go client.ReadPump()
+	go client.WritePump()
+}
+
+// validateJWTToken validates a JWT token and returns the user ID
+func (h *MessageHandler) validateJWTToken(tokenString string) (string, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Validate signing method
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return []byte(h.cfg.JWT.SigningKey), nil
+	})
+
+	if err != nil || !token.Valid {
+		return "", err
+	}
+
+	// Extract claims
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", jwt.ErrSignatureInvalid
+	}
+
+	// Extract user ID from claims (sub claim)
+	userID, ok := claims["sub"].(string)
+	if !ok {
+		return "", jwt.ErrSignatureInvalid
+	}
+
+	return userID, nil
 }
