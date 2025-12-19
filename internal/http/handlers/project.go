@@ -10,6 +10,7 @@ import (
 	"devhive-backend/internal/http/middleware"
 	"devhive-backend/internal/http/response"
 	"devhive-backend/internal/repo"
+	"devhive-backend/internal/ws"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -17,11 +18,13 @@ import (
 
 type ProjectHandler struct {
 	queries *repo.Queries
+	hub     *ws.Hub
 }
 
-func NewProjectHandler(queries *repo.Queries) *ProjectHandler {
+func NewProjectHandler(queries *repo.Queries, hub *ws.Hub) *ProjectHandler {
 	return &ProjectHandler{
 		queries: queries,
+		hub:     hub,
 	}
 }
 
@@ -250,6 +253,18 @@ func (h *ProjectHandler) JoinProject(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		response.InternalServerError(w, "Failed to join project")
 		return
+	}
+
+	// Explicitly broadcast cache invalidation for project_members change
+	// This ensures all users viewing the project get notified immediately when someone joins
+	if h.hub != nil {
+		messageData := map[string]interface{}{
+			"resource":   "project_members",
+			"action":     "INSERT",
+			"project_id": projectUUID.String(),
+			"timestamp":  time.Now().Format(time.RFC3339),
+		}
+		h.hub.BroadcastToProject(projectUUID.String(), "cache_invalidate", messageData)
 	}
 
 	// Return project details so the frontend can navigate to it
@@ -644,6 +659,18 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Explicitly broadcast cache invalidation for project_members change
+	// This ensures all users viewing the project get notified immediately
+	if h.hub != nil {
+		messageData := map[string]interface{}{
+			"resource":   "project_members",
+			"action":     "INSERT",
+			"project_id": projectUUID.String(),
+			"timestamp":  time.Now().Format(time.RFC3339),
+		}
+		h.hub.BroadcastToProject(projectUUID.String(), "cache_invalidate", messageData)
+	}
+
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Member added successfully"})
 }
 
@@ -691,6 +718,18 @@ func (h *ProjectHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		response.BadRequest(w, "Failed to remove member: "+err.Error())
 		return
+	}
+
+	// Explicitly broadcast cache invalidation for project_members change
+	// This ensures all users viewing the project get notified immediately
+	if h.hub != nil {
+		messageData := map[string]interface{}{
+			"resource":   "project_members",
+			"action":     "DELETE",
+			"project_id": projectUUID.String(),
+			"timestamp":  time.Now().Format(time.RFC3339),
+		}
+		h.hub.BroadcastToProject(projectUUID.String(), "cache_invalidate", messageData)
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Member removed successfully"})
@@ -986,6 +1025,18 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		response.InternalServerError(w, "Failed to join project")
 		return
+	}
+
+	// Explicitly broadcast cache invalidation for project_members change
+	// This ensures all users viewing the project get notified immediately when someone joins
+	if h.hub != nil {
+		messageData := map[string]interface{}{
+			"resource":   "project_members",
+			"action":     "INSERT",
+			"project_id": invite.ProjectID.String(),
+			"timestamp":  time.Now().Format(time.RFC3339),
+		}
+		h.hub.BroadcastToProject(invite.ProjectID.String(), "cache_invalidate", messageData)
 	}
 
 	// Get project details
