@@ -137,6 +137,44 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 	return i, err
 }
 
+const createProjectInvite = `-- name: CreateProjectInvite :one
+INSERT INTO project_invites (project_id, created_by, invite_token, expires_at, max_uses)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, project_id, created_by, invite_token, expires_at, max_uses, used_count, is_active, created_at, updated_at
+`
+
+type CreateProjectInviteParams struct {
+	ProjectID   uuid.UUID `json:"projectId"`
+	CreatedBy   uuid.UUID `json:"createdBy"`
+	InviteToken string    `json:"inviteToken"`
+	ExpiresAt   time.Time `json:"expiresAt"`
+	MaxUses     *int32    `json:"maxUses"`
+}
+
+func (q *Queries) CreateProjectInvite(ctx context.Context, arg CreateProjectInviteParams) (ProjectInvite, error) {
+	row := q.db.QueryRow(ctx, createProjectInvite,
+		arg.ProjectID,
+		arg.CreatedBy,
+		arg.InviteToken,
+		arg.ExpiresAt,
+		arg.MaxUses,
+	)
+	var i ProjectInvite
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.CreatedBy,
+		&i.InviteToken,
+		&i.ExpiresAt,
+		&i.MaxUses,
+		&i.UsedCount,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createRefreshToken = `-- name: CreateRefreshToken :one
 INSERT INTO refresh_tokens (user_id, token, expires_at)
 VALUES ($1, $2, $3)
@@ -284,6 +322,17 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const deactivateInvite = `-- name: DeactivateInvite :exec
+UPDATE project_invites
+SET is_active = false, updated_at = now()
+WHERE id = $1
+`
+
+func (q *Queries) DeactivateInvite(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deactivateInvite, id)
+	return err
 }
 
 const deactivateUser = `-- name: DeactivateUser :exec
@@ -496,6 +545,54 @@ func (q *Queries) GetProjectByID(ctx context.Context, id uuid.UUID) (GetProjectB
 		&i.OwnerEmail,
 		&i.OwnerFirstName,
 		&i.OwnerLastName,
+	)
+	return i, err
+}
+
+const getProjectInviteByID = `-- name: GetProjectInviteByID :one
+SELECT id, project_id, created_by, invite_token, expires_at, max_uses, used_count, is_active, created_at, updated_at
+FROM project_invites
+WHERE id = $1
+`
+
+func (q *Queries) GetProjectInviteByID(ctx context.Context, id uuid.UUID) (ProjectInvite, error) {
+	row := q.db.QueryRow(ctx, getProjectInviteByID, id)
+	var i ProjectInvite
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.CreatedBy,
+		&i.InviteToken,
+		&i.ExpiresAt,
+		&i.MaxUses,
+		&i.UsedCount,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getProjectInviteByToken = `-- name: GetProjectInviteByToken :one
+SELECT id, project_id, created_by, invite_token, expires_at, max_uses, used_count, is_active, created_at, updated_at
+FROM project_invites
+WHERE invite_token = $1 AND is_active = true
+`
+
+func (q *Queries) GetProjectInviteByToken(ctx context.Context, inviteToken string) (ProjectInvite, error) {
+	row := q.db.QueryRow(ctx, getProjectInviteByToken, inviteToken)
+	var i ProjectInvite
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.CreatedBy,
+		&i.InviteToken,
+		&i.ExpiresAt,
+		&i.MaxUses,
+		&i.UsedCount,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -757,6 +854,17 @@ func (q *Queries) GetUserByUsername(ctx context.Context, lower string) (User, er
 	return i, err
 }
 
+const incrementInviteUseCount = `-- name: IncrementInviteUseCount :exec
+UPDATE project_invites
+SET used_count = used_count + 1, updated_at = now()
+WHERE id = $1
+`
+
+func (q *Queries) IncrementInviteUseCount(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, incrementInviteUseCount, id)
+	return err
+}
+
 const listMessagesByProject = `-- name: ListMessagesByProject :many
 SELECT m.id, m.project_id, m.sender_id, m.content, m.message_type, m.parent_message_id, m.created_at, m.updated_at,
        u.username as sender_username, u.first_name as sender_first_name, u.last_name as sender_last_name, u.avatar_url as sender_avatar_url
@@ -874,6 +982,44 @@ func (q *Queries) ListMessagesByProjectAfter(ctx context.Context, arg ListMessag
 			&i.SenderFirstName,
 			&i.SenderLastName,
 			&i.SenderAvatarUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProjectInvites = `-- name: ListProjectInvites :many
+SELECT id, project_id, created_by, invite_token, expires_at, max_uses, used_count, is_active, created_at, updated_at
+FROM project_invites
+WHERE project_id = $1 AND is_active = true
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListProjectInvites(ctx context.Context, projectID uuid.UUID) ([]ProjectInvite, error) {
+	rows, err := q.db.Query(ctx, listProjectInvites, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectInvite
+	for rows.Next() {
+		var i ProjectInvite
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.CreatedBy,
+			&i.InviteToken,
+			&i.ExpiresAt,
+			&i.MaxUses,
+			&i.UsedCount,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

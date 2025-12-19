@@ -88,6 +88,9 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}, hu
 		users.With(middleware.RequireAuth(cfg.JWT.SigningKey)).Get("/{userId}", userHandler.GetUser)
 	})
 
+	// Public invite routes (no auth required for getting invite details)
+	r.Get("/invites/{inviteToken}", projectHandler.GetInviteDetails)
+
 	// Project routes
 	r.Route("/projects", func(projects chi.Router) {
 		projects.Use(middleware.RequireAuth(cfg.JWT.SigningKey))
@@ -105,6 +108,11 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}, hu
 		projects.Put("/{projectId}/members/{userId}", projectHandler.AddMember)
 		projects.Delete("/{projectId}/members/{userId}", projectHandler.RemoveMember)
 
+		// Project invites
+		projects.Post("/{projectId}/invites", projectHandler.CreateInvite)
+		projects.Get("/{projectId}/invites", projectHandler.ListInvites)
+		projects.Delete("/{projectId}/invites/{inviteId}", projectHandler.RevokeInvite)
+
 		// Project sprints
 		projects.Get("/{projectId}/sprints", sprintHandler.ListSprintsByProject)
 		projects.Post("/{projectId}/sprints", sprintHandler.CreateSprint)
@@ -116,6 +124,12 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}, hu
 		// Project messages
 		projects.Get("/{projectId}/messages", messageHandler.ListMessagesByProject)
 		projects.Post("/{projectId}/messages", messageHandler.CreateMessage)
+	})
+
+	// Protected invite accept route (auth required)
+	r.Route("/invites", func(invites chi.Router) {
+		invites.Use(middleware.RequireAuth(cfg.JWT.SigningKey))
+		invites.Post("/{inviteToken}/accept", projectHandler.AcceptInvite)
 	})
 
 	// Sprint routes

@@ -71,3 +71,34 @@ SELECT EXISTS(
     WHERE p.id = $1 AND (p.owner_id = $2 OR pm.user_id = $2)
 ) as has_access;
 
+-- name: CreateProjectInvite :one
+INSERT INTO project_invites (project_id, created_by, invite_token, expires_at, max_uses)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, project_id, created_by, invite_token, expires_at, max_uses, used_count, is_active, created_at, updated_at;
+
+-- name: GetProjectInviteByToken :one
+SELECT id, project_id, created_by, invite_token, expires_at, max_uses, used_count, is_active, created_at, updated_at
+FROM project_invites
+WHERE invite_token = $1 AND is_active = true;
+
+-- name: GetProjectInviteByID :one
+SELECT id, project_id, created_by, invite_token, expires_at, max_uses, used_count, is_active, created_at, updated_at
+FROM project_invites
+WHERE id = $1;
+
+-- name: IncrementInviteUseCount :exec
+UPDATE project_invites
+SET used_count = used_count + 1, updated_at = now()
+WHERE id = $1;
+
+-- name: DeactivateInvite :exec
+UPDATE project_invites
+SET is_active = false, updated_at = now()
+WHERE id = $1;
+
+-- name: ListProjectInvites :many
+SELECT id, project_id, created_by, invite_token, expires_at, max_uses, used_count, is_active, created_at, updated_at
+FROM project_invites
+WHERE project_id = $1 AND is_active = true
+ORDER BY created_at DESC;
+

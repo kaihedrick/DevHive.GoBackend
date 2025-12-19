@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"devhive-backend/internal/http/middleware"
 	"devhive-backend/internal/http/response"
@@ -38,6 +40,35 @@ type JoinProjectRequest struct {
 type UpdateProjectRequest struct {
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
+}
+
+// CreateInviteRequest represents the invite creation request
+type CreateInviteRequest struct {
+	ExpiresInMinutes *int `json:"expiresInMinutes,omitempty"` // Default: 30
+	MaxUses          *int `json:"maxUses,omitempty"`          // Default: unlimited
+}
+
+// InviteResponse represents an invite response
+type InviteResponse struct {
+	ID          string `json:"id"`
+	ProjectID   string `json:"projectId"`
+	InviteToken string `json:"inviteToken"`
+	InviteURL   string `json:"inviteUrl"` // Full URL for frontend
+	ExpiresAt   string `json:"expiresAt"`
+	MaxUses     *int   `json:"maxUses,omitempty"`
+	UsedCount   int    `json:"usedCount"`
+	IsActive    bool   `json:"isActive"`
+	CreatedAt   string `json:"createdAt"`
+}
+
+// InviteDetailsResponse represents invite details (for accepting)
+type InviteDetailsResponse struct {
+	ID          string `json:"id"`
+	ProjectID   string `json:"projectId"`
+	ProjectName string `json:"projectName"`
+	ExpiresAt   string `json:"expiresAt"`
+	IsExpired   bool   `json:"isExpired"`
+	IsValid     bool   `json:"isValid"`
 }
 
 // ProjectResponse represents a project response
@@ -716,4 +747,401 @@ func (h *ProjectHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 		"members": memberResponses,
 		"count":   len(memberResponses),
 	})
+}
+
+// CreateInvite handles creating a project invite link
+func (h *ProjectHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		response.Unauthorized(w, "User ID not found in context")
+		return
+	}
+
+	projectID := chi.URLParam(r, "projectId")
+	projectUUID, err := uuid.Parse(projectID)
+	if err != nil {
+		response.BadRequest(w, "Invalid project ID")
+		return
+	}
+
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		response.BadRequest(w, "Invalid user ID")
+		return
+	}
+
+	// Check if user has access to project (must be owner or member)
+	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
+		ID:      projectUUID,
+		OwnerID: userUUID,
+	})
+	if err != nil || !hasAccess {
+		response.Forbidden(w, "Access denied to project")
+		return
+	}
+
+	var req CreateInviteRequest
+	if !response.Decode(w, r, &req) {
+		return
+	}
+
+	// Default expiration: 30 minutes
+	expiresInMinutes := 30
+	if req.ExpiresInMinutes != nil && *req.ExpiresInMinutes > 0 {
+		expiresInMinutes = *req.ExpiresInMinutes
+	}
+
+	expiresAt := time.Now().Add(time.Duration(expiresInMinutes) * time.Minute)
+
+	// Generate secure invite token (UUID-based)
+	inviteToken := uuid.New().String()
+
+	// Create invite
+	var maxUsesPtr *int32
+	if req.MaxUses != nil && *req.MaxUses > 0 {
+		maxUsesVal := int32(*req.MaxUses)
+		maxUsesPtr = &maxUsesVal
+	}
+
+	invite, err := h.queries.CreateProjectInvite(r.Context(), repo.CreateProjectInviteParams{
+		ProjectID:   projectUUID,
+		CreatedBy:   userUUID,
+		InviteToken: inviteToken,
+		ExpiresAt:   expiresAt,
+		MaxUses:     maxUsesPtr,
+	})
+	if err != nil {
+		response.InternalServerError(w, "Failed to create invite: "+err.Error())
+		return
+	}
+
+	// Build invite URL (frontend will handle routing)
+	// Get frontend URL from request or use default
+	frontendURL := r.Header.Get("Origin")
+	if frontendURL == "" {
+		frontendURL = "https://devhive.it.com" // Default frontend URL
+	}
+	inviteURL := fmt.Sprintf("%s/invite/%s", frontendURL, inviteToken)
+
+	var maxUsesResponse *int
+	if invite.MaxUses != nil {
+		maxUsesVal := int(*invite.MaxUses)
+		maxUsesResponse = &maxUsesVal
+	}
+
+	response.JSON(w, http.StatusCreated, InviteResponse{
+		ID:          invite.ID.String(),
+		ProjectID:   invite.ProjectID.String(),
+		InviteToken: invite.InviteToken,
+		InviteURL:   inviteURL,
+		ExpiresAt:   invite.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"),
+		MaxUses:     maxUsesResponse,
+		UsedCount:   int(invite.UsedCount),
+		IsActive:    invite.IsActive,
+		CreatedAt:   invite.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	})
+}
+
+// GetInviteDetails handles getting invite details by token (public endpoint, no auth required)
+func (h *ProjectHandler) GetInviteDetails(w http.ResponseWriter, r *http.Request) {
+	inviteToken := chi.URLParam(r, "inviteToken")
+	if inviteToken == "" {
+		response.BadRequest(w, "Invite token is required")
+		return
+	}
+
+	invite, err := h.queries.GetProjectInviteByToken(r.Context(), inviteToken)
+	if err != nil {
+		response.NotFound(w, "Invite not found or expired")
+		return
+	}
+
+	// Check if expired
+	isExpired := time.Now().After(invite.ExpiresAt)
+	isValid := invite.IsActive && !isExpired &&
+		(invite.MaxUses == nil || invite.UsedCount < *invite.MaxUses)
+
+	// Get project details
+	project, err := h.queries.GetProjectByID(r.Context(), invite.ProjectID)
+	if err != nil {
+		response.NotFound(w, "Project not found")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, InviteDetailsResponse{
+		ID:          invite.ID.String(),
+		ProjectID:   invite.ProjectID.String(),
+		ProjectName: project.Name,
+		ExpiresAt:   invite.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"),
+		IsExpired:   isExpired,
+		IsValid:     isValid,
+	})
+}
+
+// AcceptInvite handles accepting an invite and joining the project
+func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		response.Unauthorized(w, "User ID not found in context")
+		return
+	}
+
+	inviteToken := chi.URLParam(r, "inviteToken")
+	if inviteToken == "" {
+		response.BadRequest(w, "Invite token is required")
+		return
+	}
+
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		response.BadRequest(w, "Invalid user ID")
+		return
+	}
+
+	// Get invite
+	invite, err := h.queries.GetProjectInviteByToken(r.Context(), inviteToken)
+	if err != nil {
+		response.NotFound(w, "Invite not found or expired")
+		return
+	}
+
+	// Validate invite
+	isExpired := time.Now().After(invite.ExpiresAt)
+	if !invite.IsActive {
+		response.BadRequest(w, "Invite has been deactivated")
+		return
+	}
+	if isExpired {
+		response.BadRequest(w, "Invite has expired")
+		return
+	}
+	if invite.MaxUses != nil && invite.UsedCount >= *invite.MaxUses {
+		response.BadRequest(w, "Invite has reached maximum uses")
+		return
+	}
+
+	// Check if user is already a member
+	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
+		ID:      invite.ProjectID,
+		OwnerID: userUUID,
+	})
+	if err == nil && hasAccess {
+		// User is already a member, return project details
+		project, err := h.queries.GetProjectByID(r.Context(), invite.ProjectID)
+		if err != nil {
+			response.InternalServerError(w, "Failed to get project details")
+			return
+		}
+
+		response.JSON(w, http.StatusOK, ProjectResponse{
+			ID:          project.ID.String(),
+			OwnerID:     project.OwnerID.String(),
+			Name:        project.Name,
+			Description: *project.Description,
+			CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			Owner: struct {
+				ID        string `json:"id"`
+				Username  string `json:"username"`
+				Email     string `json:"email"`
+				FirstName string `json:"firstName"`
+				LastName  string `json:"lastName"`
+			}{
+				ID:        project.OwnerID.String(),
+				Username:  project.OwnerUsername,
+				Email:     project.OwnerEmail,
+				FirstName: project.OwnerFirstName,
+				LastName:  project.OwnerLastName,
+			},
+		})
+		return
+	}
+
+	// Increment use count
+	err = h.queries.IncrementInviteUseCount(r.Context(), invite.ID)
+	if err != nil {
+		response.InternalServerError(w, "Failed to update invite")
+		return
+	}
+
+	// Add user as member
+	err = h.queries.AddProjectMember(r.Context(), repo.AddProjectMemberParams{
+		ProjectID: invite.ProjectID,
+		UserID:    userUUID,
+		Role:      "member", // Always "member" for invites
+	})
+	if err != nil {
+		response.InternalServerError(w, "Failed to join project")
+		return
+	}
+
+	// Get project details
+	project, err := h.queries.GetProjectByID(r.Context(), invite.ProjectID)
+	if err != nil {
+		response.InternalServerError(w, "Failed to get project details")
+		return
+	}
+
+	// Return project details
+	response.JSON(w, http.StatusOK, ProjectResponse{
+		ID:          project.ID.String(),
+		OwnerID:     project.OwnerID.String(),
+		Name:        project.Name,
+		Description: *project.Description,
+		CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		Owner: struct {
+			ID        string `json:"id"`
+			Username  string `json:"username"`
+			Email     string `json:"email"`
+			FirstName string `json:"firstName"`
+			LastName  string `json:"lastName"`
+		}{
+			ID:        project.OwnerID.String(),
+			Username:  project.OwnerUsername,
+			Email:     project.OwnerEmail,
+			FirstName: project.OwnerFirstName,
+			LastName:  project.OwnerLastName,
+		},
+	})
+}
+
+// ListInvites handles listing all active invites for a project
+func (h *ProjectHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		response.Unauthorized(w, "User ID not found in context")
+		return
+	}
+
+	projectID := chi.URLParam(r, "projectId")
+	projectUUID, err := uuid.Parse(projectID)
+	if err != nil {
+		response.BadRequest(w, "Invalid project ID")
+		return
+	}
+
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		response.BadRequest(w, "Invalid user ID")
+		return
+	}
+
+	// Check if user has access to project
+	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
+		ID:      projectUUID,
+		OwnerID: userUUID,
+	})
+	if err != nil || !hasAccess {
+		response.Forbidden(w, "Access denied to project")
+		return
+	}
+
+	// Get all active invites for the project
+	invites, err := h.queries.ListProjectInvites(r.Context(), projectUUID)
+	if err != nil {
+		response.InternalServerError(w, "Failed to list invites")
+		return
+	}
+
+	// Get frontend URL from request or use default
+	frontendURL := r.Header.Get("Origin")
+	if frontendURL == "" {
+		frontendURL = "https://devhive.it.com" // Default frontend URL
+	}
+
+	// Convert to response format
+	var inviteResponses []InviteResponse
+	for _, invite := range invites {
+		var maxUsesPtr *int
+		if invite.MaxUses != nil {
+			maxUsesVal := int(*invite.MaxUses)
+			maxUsesPtr = &maxUsesVal
+		}
+
+		inviteURL := fmt.Sprintf("%s/invite/%s", frontendURL, invite.InviteToken)
+
+		inviteResponses = append(inviteResponses, InviteResponse{
+			ID:          invite.ID.String(),
+			ProjectID:   invite.ProjectID.String(),
+			InviteToken: invite.InviteToken,
+			InviteURL:   inviteURL,
+			ExpiresAt:   invite.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"),
+			MaxUses:     maxUsesPtr,
+			UsedCount:   int(invite.UsedCount),
+			IsActive:    invite.IsActive,
+			CreatedAt:   invite.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+
+	if inviteResponses == nil {
+		inviteResponses = []InviteResponse{}
+	}
+
+	response.JSON(w, http.StatusOK, map[string]interface{}{
+		"invites": inviteResponses,
+		"count":   len(inviteResponses),
+	})
+}
+
+// RevokeInvite handles deactivating an invite
+func (h *ProjectHandler) RevokeInvite(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		response.Unauthorized(w, "User ID not found in context")
+		return
+	}
+
+	projectID := chi.URLParam(r, "projectId")
+	inviteID := chi.URLParam(r, "inviteId")
+
+	projectUUID, err := uuid.Parse(projectID)
+	if err != nil {
+		response.BadRequest(w, "Invalid project ID")
+		return
+	}
+
+	inviteUUID, err := uuid.Parse(inviteID)
+	if err != nil {
+		response.BadRequest(w, "Invalid invite ID")
+		return
+	}
+
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		response.BadRequest(w, "Invalid user ID")
+		return
+	}
+
+	// Check if user has access to project
+	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
+		ID:      projectUUID,
+		OwnerID: userUUID,
+	})
+	if err != nil || !hasAccess {
+		response.Forbidden(w, "Access denied to project")
+		return
+	}
+
+	// Get invite to verify it belongs to the project
+	invite, err := h.queries.GetProjectInviteByID(r.Context(), inviteUUID)
+	if err != nil {
+		response.NotFound(w, "Invite not found")
+		return
+	}
+
+	// Verify invite belongs to the project
+	if invite.ProjectID != projectUUID {
+		response.Forbidden(w, "Invite does not belong to this project")
+		return
+	}
+
+	// Deactivate invite
+	err = h.queries.DeactivateInvite(r.Context(), inviteUUID)
+	if err != nil {
+		response.InternalServerError(w, "Failed to revoke invite")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]string{"message": "Invite revoked successfully"})
 }

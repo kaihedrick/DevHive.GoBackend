@@ -39,6 +39,19 @@ type Project struct {
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
+type ProjectInvite struct {
+	ID          uuid.UUID `json:"id"`
+	ProjectID   uuid.UUID `json:"projectId"`
+	CreatedBy   uuid.UUID `json:"createdBy"`
+	InviteToken string    `json:"inviteToken"`
+	ExpiresAt   time.Time `json:"expiresAt"`
+	MaxUses     *int32    `json:"maxUses"`
+	UsedCount   int32     `json:"usedCount"`
+	IsActive    bool      `json:"isActive"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
 type ProjectMember struct {
 	ProjectID uuid.UUID `json:"projectId"`
 	UserID    uuid.UUID `json:"userId"`
