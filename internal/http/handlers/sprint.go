@@ -39,6 +39,12 @@ type UpdateSprintRequest struct {
 	EndDate     *string `json:"endDate,omitempty"`
 }
 
+// UpdateSprintStatusRequest represents the sprint status update request
+type UpdateSprintStatusRequest struct {
+	IsStarted   bool `json:"isStarted"`
+	IsCompleted bool `json:"isCompleted"`
+}
+
 // SprintResponse represents a sprint response
 type SprintResponse struct {
 	ID          string    `json:"id"`
@@ -501,4 +507,95 @@ func (h *SprintHandler) DeleteSprint(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Sprint deleted successfully"})
+}
+
+// UpdateSprintStatus handles updating sprint status (is_started, is_completed)
+func (h *SprintHandler) UpdateSprintStatus(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		response.Unauthorized(w, "User ID not found in context")
+		return
+	}
+
+	sprintID := chi.URLParam(r, "sprintId")
+	if sprintID == "" {
+		response.BadRequest(w, "Sprint ID is required")
+		return
+	}
+
+	sprintUUID, err := uuid.Parse(sprintID)
+	if err != nil {
+		response.BadRequest(w, "Invalid sprint ID")
+		return
+	}
+
+	// Get current sprint to check access
+	currentSprint, err := h.queries.GetSprintByID(r.Context(), sprintUUID)
+	if err != nil {
+		response.NotFound(w, "Sprint not found")
+		return
+	}
+
+	// Check if user has access to project
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		response.BadRequest(w, "Invalid user ID")
+		return
+	}
+	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
+		ID:      currentSprint.ProjectID,
+		OwnerID: userUUID,
+	})
+	if err != nil || !hasAccess {
+		response.Forbidden(w, "Access denied to sprint")
+		return
+	}
+
+	var req UpdateSprintStatusRequest
+	if !response.Decode(w, r, &req) {
+		return
+	}
+
+	// Update sprint status
+	updatedSprint, err := h.queries.UpdateSprintStatus(r.Context(), repo.UpdateSprintStatusParams{
+		ID:          sprintUUID,
+		IsStarted:   req.IsStarted,
+		IsCompleted: req.IsCompleted,
+	})
+	if err != nil {
+		response.BadRequest(w, "Failed to update sprint status: "+err.Error())
+		return
+	}
+
+	// Get full sprint details with owner
+	fullSprint, err := h.queries.GetSprintByID(r.Context(), sprintUUID)
+	if err != nil {
+		response.InternalServerError(w, "Failed to get updated sprint details")
+		return
+	}
+
+	descriptionResp := ""
+	if fullSprint.Description != nil {
+		descriptionResp = *fullSprint.Description
+	}
+
+	response.JSON(w, http.StatusOK, SprintResponse{
+		ID:          fullSprint.ID.String(),
+		ProjectID:   fullSprint.ProjectID.String(),
+		Name:        fullSprint.Name,
+		Description: descriptionResp,
+		StartDate:   fullSprint.StartDate.Format("2006-01-02T15:04:05Z07:00"),
+		EndDate:     fullSprint.EndDate.Format("2006-01-02T15:04:05Z07:00"),
+		IsCompleted: updatedSprint.IsCompleted,
+		IsStarted:   updatedSprint.IsStarted,
+		CreatedAt:   fullSprint.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:   fullSprint.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		Owner: OwnerInfo{
+			ID:        fullSprint.OwnerID.String(),
+			Username:  fullSprint.OwnerUsername,
+			Email:     fullSprint.OwnerEmail,
+			FirstName: fullSprint.OwnerFirstName,
+			LastName:  fullSprint.OwnerLastName,
+		},
+	})
 }

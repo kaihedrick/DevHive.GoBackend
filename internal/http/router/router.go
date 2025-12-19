@@ -137,6 +137,7 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}, hu
 		sprints.Use(middleware.RequireAuth(cfg.JWT.SigningKey))
 		sprints.Get("/{sprintId}", sprintHandler.GetSprint)
 		sprints.Patch("/{sprintId}", sprintHandler.UpdateSprint)
+		sprints.Patch("/{sprintId}/status", sprintHandler.UpdateSprintStatus)
 		sprints.Delete("/{sprintId}", sprintHandler.DeleteSprint)
 		sprints.Get("/{sprintId}/tasks", taskHandler.ListTasksBySprint)
 	})
