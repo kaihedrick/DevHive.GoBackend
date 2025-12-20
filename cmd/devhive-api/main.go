@@ -71,7 +71,11 @@ func main() {
 	log.Println("WebSocket hub started")
 
 	// Start NOTIFY listener with dedicated connection
+	log.Println("🔧 main.go: About to call StartNotifyListener...")
+	log.Printf("🔧 main.go: DatabaseURL length: %d characters", len(cfg.DatabaseURL))
+	log.Printf("🔧 main.go: Hub is nil: %v", ws.GlobalHub == nil)
 	dbnotify.StartNotifyListener(cfg.DatabaseURL, ws.GlobalHub)
+	log.Println("✅ main.go: StartNotifyListener call completed")
 	log.Println("PostgreSQL NOTIFY listener started")
 
 	// Setup router (pass hub to router)

@@ -101,3 +101,5 @@ After implementation:
 
 5. **CORS**: Make sure your backend CORS configuration allows credentials (already configured in your backend).
 
+
+

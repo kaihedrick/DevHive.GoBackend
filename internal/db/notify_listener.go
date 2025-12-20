@@ -33,6 +33,16 @@ type CacheInvalidationPayload struct {
 // StartNotifyListener creates a dedicated connection and starts listening for NOTIFY events
 // CRITICAL: Uses dedicated connection, NOT from pool
 func StartNotifyListener(databaseURL string, hub *ws.Hub) {
+	log.Println("🔧 StartNotifyListener called - initializing NOTIFY listener...")
+	if databaseURL == "" {
+		log.Println("❌ ERROR: databaseURL is empty! NOTIFY listener cannot start.")
+		return
+	}
+	if hub == nil {
+		log.Println("❌ ERROR: hub is nil! NOTIFY listener cannot start.")
+		return
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	listener := &NotifyListener{
 		databaseURL: databaseURL,
@@ -41,25 +51,34 @@ func StartNotifyListener(databaseURL string, hub *ws.Hub) {
 		cancel:      cancel,
 	}
 
+	log.Println("🔧 Starting NOTIFY listener goroutine...")
 	go listener.listen()
+	log.Println("✅ StartNotifyListener completed - goroutine launched")
 }
 
 // listen establishes connection and listens for notifications
 func (l *NotifyListener) listen() {
 	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("❌ PANIC in NOTIFY listener: %v", r)
+		}
 		if l.conn != nil {
 			l.conn.Close(context.Background())
 		}
+		log.Println("❌ NOTIFY listener goroutine exiting")
 	}()
+
+	log.Println("🚀 NOTIFY listener goroutine started")
 
 	backoff := time.Second
 	maxBackoff := 30 * time.Second
 
 	for {
+		log.Printf("🔄 NOTIFY listener attempting to connect to database...")
 		// Create dedicated connection (NOT from pool)
 		conn, err := pgx.Connect(l.ctx, l.databaseURL)
 		if err != nil {
-			log.Printf("Failed to connect for NOTIFY listener: %v. Retrying in %v...", err, backoff)
+			log.Printf("❌ Failed to connect for NOTIFY listener: %v. Retrying in %v...", err, backoff)
 			select {
 			case <-l.ctx.Done():
 				return
@@ -85,7 +104,8 @@ func (l *NotifyListener) listen() {
 			}
 		}
 
-		log.Println("NOTIFY listener started, listening on 'cache_invalidate' channel")
+		log.Println("✅ NOTIFY listener started, listening on 'cache_invalidate' channel")
+		log.Printf("✅ NOTIFY listener connection established successfully at %s", time.Now().Format(time.RFC3339))
 
 		// Notify clients of reconnection (if this is a reconnect)
 		if l.conn != nil {
@@ -94,6 +114,7 @@ func (l *NotifyListener) listen() {
 
 		// Main loop: wait for notifications
 		log.Println("⏳ NOTIFY listener waiting for notifications on 'cache_invalidate' channel...")
+		log.Printf("⏳ NOTIFY listener ready at %s - any PostgreSQL NOTIFY events will be logged here", time.Now().Format(time.RFC3339))
 		for {
 			notification, err := conn.WaitForNotification(l.ctx)
 			if err != nil {

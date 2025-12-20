@@ -148,3 +148,5 @@ Your backend should have:
 - `CORS_ALLOW_CREDENTIALS` = `true`
 - Cookies set with `SameSite=None` and `Secure=true` (already fixed)
 
+
+

@@ -110,3 +110,5 @@ act version 0.2.83
 Try the **Direct Download** method (Method 3) - it's the most reliable and doesn't require admin rights or package managers.
 
 
+
+

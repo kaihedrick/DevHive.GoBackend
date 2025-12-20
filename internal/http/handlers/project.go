@@ -547,15 +547,18 @@ func (h *ProjectHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("RemoveMember: Removing user %s from project %s", memberUUID.String(), projectUUID.String())
 	err = h.queries.RemoveProjectMember(r.Context(), repo.RemoveProjectMemberParams{
 		ProjectID: projectUUID,
 		UserID:    memberUUID,
 	})
 	if err != nil {
+		log.Printf("RemoveMember: Failed to remove member: %v", err)
 		response.BadRequest(w, "Failed to remove member: "+err.Error())
 		return
 	}
 
+	log.Printf("RemoveMember: Successfully removed user %s from project %s", memberUUID.String(), projectUUID.String())
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Member removed successfully"})
 }
 
@@ -853,6 +856,7 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 
 	// Add user as a member
 	log.Printf("AcceptInvite: Adding user %s to project %s", userUUID.String(), invite.ProjectID.String())
+	log.Printf("AcceptInvite: About to execute AddProjectMember query - this should trigger PostgreSQL NOTIFY")
 	err = h.queries.AddProjectMember(r.Context(), repo.AddProjectMemberParams{
 		ProjectID: invite.ProjectID,
 		UserID:    userUUID,
@@ -863,7 +867,8 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "Failed to join project: "+err.Error())
 		return
 	}
-	log.Printf("AcceptInvite: Successfully added user %s to project %s (should trigger cache invalidation)", userUUID.String(), invite.ProjectID.String())
+	log.Printf("AcceptInvite: ✅ Database INSERT/UPDATE completed for user %s in project %s", userUUID.String(), invite.ProjectID.String())
+	log.Printf("AcceptInvite: ⚠️  If NOTIFY listener is running, you should see '🔔 RAW NOTIFY received' logs within 1 second")
 
 	// Increment invite use count
 	err = h.queries.IncrementInviteUseCount(r.Context(), invite.ID)

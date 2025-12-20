@@ -33,3 +33,4 @@ if ($notifyMessages) {
     Write-Host "No recent NOTIFY messages found (this is normal if no changes occurred)" -ForegroundColor Gray
 }
 
+
