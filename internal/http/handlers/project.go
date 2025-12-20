@@ -162,8 +162,9 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// CRITICAL: Insert owner into project_members table for consistency
+	// CRITICAL: Insert owner into project_members table (canonical model)
 	// This ensures owners appear in member lists and all queries work consistently
+	// Idempotent: AddProjectMember uses ON CONFLICT, so this is safe to call multiple times
 	err = h.queries.AddProjectMember(r.Context(), repo.AddProjectMemberParams{
 		ProjectID: project.ID,
 		UserID:    userUUID,

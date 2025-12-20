@@ -7,13 +7,21 @@ JOIN users u ON p.owner_id = u.id
 WHERE p.id = $1;
 
 -- name: ListProjectsByUser :many
+-- Fixed: Use EXISTS to avoid duplicates from LEFT JOIN
 SELECT p.id, p.owner_id, p.name, p.description, p.created_at, p.updated_at,
-       u.id as owner_id, u.username as owner_username, u.email as owner_email,
-       u.first_name as owner_first_name, u.last_name as owner_last_name
+       u.username AS owner_username,
+       u.email AS owner_email,
+       u.first_name AS owner_first_name,
+       u.last_name AS owner_last_name,
+       u.avatar_url AS owner_avatar_url
 FROM projects p
-JOIN users u ON p.owner_id = u.id
-LEFT JOIN project_members pm ON p.id = pm.project_id
-WHERE p.owner_id = $1 OR pm.user_id = $1
+JOIN users u ON u.id = p.owner_id
+WHERE p.owner_id = $1
+   OR EXISTS (
+       SELECT 1
+       FROM project_members pm
+       WHERE pm.project_id = p.id AND pm.user_id = $1
+   )
 ORDER BY p.created_at DESC
 LIMIT $2 OFFSET $3;
 
@@ -32,47 +40,31 @@ RETURNING id, owner_id, name, description, created_at, updated_at;
 DELETE FROM projects WHERE id = $1;
 
 -- name: AddProjectMember :exec
+-- Idempotent: Uses ON CONFLICT to prevent duplicates
 INSERT INTO project_members (project_id, user_id, role)
 VALUES ($1, $2, $3)
-ON CONFLICT (project_id, user_id) DO UPDATE SET role = $3;
+ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role;
 
 -- name: RemoveProjectMember :exec
 DELETE FROM project_members WHERE project_id = $1 AND user_id = $2;
 
 -- name: GetProjectMembers :many
--- Get project owner as a member (for consistency with ListProjectMembers)
--- Returns same structure as ListProjectMembers but includes avatar_url
-SELECT $1::uuid as project_id, u.id as user_id, u.username, u.email, u.first_name, u.last_name, u.avatar_url, p.created_at as joined_at, 'owner' as role
-FROM projects p
-JOIN users u ON p.owner_id = u.id
-WHERE p.id = $1
-
-UNION ALL
-
--- Get additional project members
-SELECT pm.project_id, u.id as user_id, u.username, u.email, u.first_name, u.last_name, u.avatar_url, pm.joined_at, pm.role
+-- Canonical model: project_members is single source of truth (includes owner)
+SELECT pm.project_id, pm.user_id, pm.role, pm.joined_at,
+       u.username, u.email, u.first_name, u.last_name, u.avatar_url
 FROM project_members pm
 JOIN users u ON pm.user_id = u.id
 WHERE pm.project_id = $1
-
-ORDER BY joined_at;
+ORDER BY pm.joined_at;
 
 -- name: ListProjectMembers :many
--- Get project owner as a member
-SELECT u.id, u.username, u.email, u.first_name, u.last_name, p.created_at as joined_at, 'owner' as role
-FROM projects p
-JOIN users u ON p.owner_id = u.id
-WHERE p.id = $1
-
-UNION ALL
-
--- Get additional project members
-SELECT u.id, u.username, u.email, u.first_name, u.last_name, pm.joined_at, pm.role
+-- Canonical model: project_members is single source of truth (includes owner)
+SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.avatar_url,
+       pm.joined_at, pm.role
 FROM project_members pm
 JOIN users u ON pm.user_id = u.id
 WHERE pm.project_id = $1
-
-ORDER BY joined_at;
+ORDER BY pm.joined_at;
 
 -- name: CheckProjectAccess :one
 -- Check if user is project owner OR project member
