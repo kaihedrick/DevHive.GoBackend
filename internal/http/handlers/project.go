@@ -681,6 +681,19 @@ func (h *ProjectHandler) JoinProject(w http.ResponseWriter, r *http.Request) {
 			Description: *project.Description,
 			CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 			UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			Owner: struct {
+				ID        string `json:"id"`
+				Username  string `json:"username"`
+				Email     string `json:"email"`
+				FirstName string `json:"firstName"`
+				LastName  string `json:"lastName"`
+			}{
+				ID:        project.OwnerID.String(),
+				Username:  project.OwnerUsername,
+				Email:     project.OwnerEmail,
+				FirstName: project.OwnerFirstName,
+				LastName:  project.OwnerLastName,
+			},
 		})
 		return
 	}
@@ -710,6 +723,19 @@ func (h *ProjectHandler) JoinProject(w http.ResponseWriter, r *http.Request) {
 		Description: *project.Description,
 		CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		Owner: struct {
+			ID        string `json:"id"`
+			Username  string `json:"username"`
+			Email     string `json:"email"`
+			FirstName string `json:"firstName"`
+			LastName  string `json:"lastName"`
+		}{
+			ID:        project.OwnerID.String(),
+			Username:  project.OwnerUsername,
+			Email:     project.OwnerEmail,
+			FirstName: project.OwnerFirstName,
+			LastName:  project.OwnerLastName,
+		},
 	})
 }
 
@@ -782,6 +808,19 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 			Description: *project.Description,
 			CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 			UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			Owner: struct {
+				ID        string `json:"id"`
+				Username  string `json:"username"`
+				Email     string `json:"email"`
+				FirstName string `json:"firstName"`
+				LastName  string `json:"lastName"`
+			}{
+				ID:        project.OwnerID.String(),
+				Username:  project.OwnerUsername,
+				Email:     project.OwnerEmail,
+				FirstName: project.OwnerFirstName,
+				LastName:  project.OwnerLastName,
+			},
 		})
 		return
 	}
@@ -818,6 +857,19 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		Description: *project.Description,
 		CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		Owner: struct {
+			ID        string `json:"id"`
+			Username  string `json:"username"`
+			Email     string `json:"email"`
+			FirstName string `json:"firstName"`
+			LastName  string `json:"lastName"`
+		}{
+			ID:        project.OwnerID.String(),
+			Username:  project.OwnerUsername,
+			Email:     project.OwnerEmail,
+			FirstName: project.OwnerFirstName,
+			LastName:  project.OwnerLastName,
+		},
 	})
 }
 
