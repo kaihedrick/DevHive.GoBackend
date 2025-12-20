@@ -487,6 +487,8 @@ func (h *MessageHandler) WebSocketHandler(w http.ResponseWriter, r *http.Request
 		} else if !projectExists {
 			log.Printf("WARN: Project %s does not exist (user %s)",
 				projectUUID.String(), userUUID.String())
+			http.Error(w, "Project not found", http.StatusNotFound)
+			return
 		} else {
 			// Project exists, check if user is owner
 			isOwner, ownerErr := h.queries.CheckProjectOwner(r.Context(), repo.CheckProjectOwnerParams{
@@ -500,11 +502,13 @@ func (h *MessageHandler) WebSocketHandler(w http.ResponseWriter, r *http.Request
 				log.Printf("ERROR: Project owner %s denied access to project %s - BUG! CheckProjectAccess returned false but CheckProjectOwner returned true",
 					userUUID.String(), projectUUID.String())
 			} else {
-				log.Printf("WARN: User %s is not owner or member of project %s",
+				log.Printf("WARN: User %s is not a member of project %s",
 					userUUID.String(), projectUUID.String())
 			}
 		}
-		http.Error(w, "Access denied to project", http.StatusForbidden)
+		// Return 403 with clear message - user is authenticated but not authorized for this project
+		// Frontend should handle this by clearing selectedProjectId, not logging out
+		http.Error(w, "You are not a member of this project. Please select a project you have access to.", http.StatusForbidden)
 		return
 	}
 

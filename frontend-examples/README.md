@@ -15,6 +15,8 @@ These files implement caching, auth persistence, and lazy loading for your React
    - Copy `src/contexts/AuthContext.tsx` to your `src/contexts/` directory
    - Copy `src/hooks/useAuth.ts` to your `src/hooks/` directory
    - Copy `src/hooks/useProjects.ts` to your `src/hooks/` directory
+   - Copy `src/hooks/useInvites.ts` to your `src/hooks/` directory (NEW)
+   - Copy `src/components/ProjectInvites.tsx` to your `src/components/` directory (optional, customize as needed)
 
 3. **Update Your App.tsx**
    - Use the example in `src/App.example.tsx` as a reference
@@ -75,6 +77,11 @@ function LoginPage() {
 ## Key Features
 
 - **Caching**: API responses are cached for 5 minutes (configurable per query)
+- **Invites**: All project members can view invites, owners/admins can create/revoke
+
+## Documentation
+
+- **Invites Guide**: See `INVITES_FRONTEND_GUIDE.md` for complete invite implementation guide
 - **No Refetching**: Data doesn't refetch on window focus, reconnect, or remount
 - **Persistent Auth**: Users stay logged in across browser sessions via refresh tokens
 - **Lazy Loading**: Routes are code-split for faster initial load

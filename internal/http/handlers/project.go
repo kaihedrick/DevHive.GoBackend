@@ -101,10 +101,13 @@ func (h *ProjectHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert to response format
+	// Convert to response format with user role and permissions
 	var projectResponses []ProjectResponse
 	for _, project := range projects {
-		projectResponses = append(projectResponses, ProjectResponse{
+		// Get user's role and permissions for each project
+		userRole, permissions := h.getUserRoleAndPermissions(r.Context(), project.ID, userUUID)
+		
+		projectResponse := ProjectResponse{
 			ID:          project.ID.String(),
 			OwnerID:     project.OwnerID.String(),
 			Name:        project.Name,
@@ -124,7 +127,11 @@ func (h *ProjectHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
 				FirstName: project.OwnerFirstName,
 				LastName:  project.OwnerLastName,
 			},
-		})
+			UserRole:    userRole,
+			Permissions: permissions,
+		}
+		
+		projectResponses = append(projectResponses, projectResponse)
 	}
 
 	response.JSON(w, http.StatusOK, map[string]interface{}{
