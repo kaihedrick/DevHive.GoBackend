@@ -1083,16 +1083,17 @@ func (h *ProjectHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user is owner or admin
-	isOwnerOrAdmin, err := h.queries.CheckProjectOwnerOrAdmin(r.Context(), repo.CheckProjectOwnerOrAdminParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+	// Check if user has access to project (any project member can view invites)
+	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
-	if err != nil || !isOwnerOrAdmin {
-		response.Forbidden(w, "Only project owners and admins can view invites")
+	if err != nil || !hasAccess {
+		response.Forbidden(w, "Access denied to project")
 		return
 	}
 
+	// All project members can view invites (owners, admins, and regular members)
 	invites, err := h.queries.ListProjectInvites(r.Context(), projectUUID)
 	if err != nil {
 		response.BadRequest(w, "Failed to list invites: "+err.Error())
