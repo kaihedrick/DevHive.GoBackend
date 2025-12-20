@@ -251,6 +251,10 @@ func (c *Client) handleMessage(msg Message) {
 	case "leave_project":
 		c.projectID = ""
 		log.Printf("Client left project")
+	case "init", "ping", "pong":
+		// Protocol control messages - silently accept
+		// These are used for connection health checks and initialization
+		return
 	default:
 		log.Printf("Unknown message type: %s", msg.Type)
 	}

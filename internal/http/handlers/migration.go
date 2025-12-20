@@ -218,3 +218,53 @@ func (h *MigrationHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 		"timestamp": "2025-09-29T21:15:00Z",
 	})
 }
+
+// TestNotifyTrigger manually triggers a NOTIFY event to test the trigger system
+// This inserts a temporary row into project_members and immediately deletes it
+func (h *MigrationHandler) TestNotifyTrigger(w http.ResponseWriter, r *http.Request) {
+	// Get a test project and user ID from the first available records
+	var projectID, userID string
+	err := h.db.QueryRow(`
+		SELECT p.id::text, u.id::text 
+		FROM projects p 
+		CROSS JOIN users u 
+		LIMIT 1
+	`).Scan(&projectID, &userID)
+	
+	if err != nil {
+		response.InternalServerError(w, fmt.Sprintf("Failed to get test IDs: %v. Make sure you have at least one project and one user.", err))
+		return
+	}
+	
+	// Insert a test row (this should trigger NOTIFY)
+	// Use ON CONFLICT to handle if the member already exists
+	_, err = h.db.Exec(`
+		INSERT INTO project_members (project_id, user_id, role)
+		VALUES ($1::uuid, $2::uuid, 'member')
+		ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'member'
+	`, projectID, userID)
+	
+	if err != nil {
+		response.InternalServerError(w, fmt.Sprintf("Failed to insert test row: %v", err))
+		return
+	}
+	
+	// Delete the test row (this should also trigger NOTIFY)
+	_, err = h.db.Exec(`
+		DELETE FROM project_members 
+		WHERE project_id = $1::uuid AND user_id = $2::uuid
+	`, projectID, userID)
+	
+	if err != nil {
+		response.InternalServerError(w, fmt.Sprintf("Failed to delete test row: %v", err))
+		return
+	}
+	
+	response.JSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Test NOTIFY trigger executed. Check logs for '🔔 RAW NOTIFY received' messages.",
+		"project_id": projectID,
+		"user_id": userID,
+		"note": "If you see this but no NOTIFY logs, the trigger may not be installed or firing.",
+	})
+}

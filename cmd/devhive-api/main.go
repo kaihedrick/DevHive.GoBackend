@@ -50,6 +50,13 @@ func main() {
 	if err := db.RunMigrations(database); err != nil {
 		log.Printf("Warning: Migration failed: %v", err)
 	}
+	
+	// Verify NOTIFY triggers are installed
+	if err := db.VerifyNotifyTriggers(database); err != nil {
+		log.Printf("Warning: Failed to verify NOTIFY triggers: %v", err)
+	} else {
+		log.Println("✅ NOTIFY triggers verified and installed")
+	}
 
 	// Create indexes for performance
 	if err := db.CreateIndexes(database); err != nil {

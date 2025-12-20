@@ -179,6 +179,7 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}, hu
 		migrations.Post("/rebuild-deploy", migrationHandler.RebuildAndDeploy)
 		migrations.Post("/run-and-deploy", migrationHandler.RunMigrationAndDeploy)
 		migrations.Get("/health", migrationHandler.HealthCheck)
+		migrations.Post("/test-notify", migrationHandler.TestNotifyTrigger)
 	})
 
 	// Legacy route shims (temporary for backward compatibility)

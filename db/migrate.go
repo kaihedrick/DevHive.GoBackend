@@ -84,7 +84,16 @@ func RunMigrations(db *sql.DB) error {
 		log.Printf("Applying migration: %s", filename)
 		_, err = db.Exec(string(migrationSQL))
 		if err != nil {
-			return fmt.Errorf("failed to execute migration %s: %w", filename, err)
+			// Check if error is due to already existing objects (idempotency)
+			errStr := err.Error()
+			if strings.Contains(errStr, "already exists") || 
+			   strings.Contains(errStr, "duplicate key") ||
+			   strings.Contains(errStr, "relation") && strings.Contains(errStr, "already exists") {
+				log.Printf("Migration %s: Some objects already exist (idempotent), continuing...", filename)
+				// Continue - this is expected for idempotent migrations
+			} else {
+				return fmt.Errorf("failed to execute migration %s: %w", filename, err)
+			}
 		}
 
 		// Record migration as applied
@@ -131,4 +140,67 @@ func CreateIndexes(db *sql.DB) error {
 // HealthCheck verifies database connectivity
 func HealthCheck(db *sql.DB) error {
 	return db.Ping()
+}
+
+// VerifyNotifyTriggers checks if NOTIFY triggers are installed and logs their status
+func VerifyNotifyTriggers(db *sql.DB) error {
+	log.Println("🔍 Verifying NOTIFY triggers installation...")
+	
+	// Check if the function exists
+	var funcExists bool
+	err := db.QueryRow(`
+		SELECT EXISTS(
+			SELECT 1 FROM pg_proc p
+			JOIN pg_namespace n ON p.pronamespace = n.oid
+			WHERE n.nspname = 'public' AND p.proname = 'notify_cache_invalidation'
+		)
+	`).Scan(&funcExists)
+	if err != nil {
+		return fmt.Errorf("failed to check function: %w", err)
+	}
+	
+	if !funcExists {
+		log.Println("❌ NOTIFY function 'notify_cache_invalidation' NOT found")
+		return fmt.Errorf("notify_cache_invalidation function not found")
+	}
+	log.Println("✅ NOTIFY function 'notify_cache_invalidation' exists")
+	
+	// Check triggers on each table
+	tables := []string{"projects", "sprints", "tasks", "project_members"}
+	allTriggersExist := true
+	
+	for _, table := range tables {
+		var triggerExists bool
+		err := db.QueryRow(`
+			SELECT EXISTS(
+				SELECT 1 FROM pg_trigger t
+				JOIN pg_class c ON t.tgrelid = c.oid
+				JOIN pg_namespace n ON c.relnamespace = n.oid
+				WHERE n.nspname = 'public' 
+				AND c.relname = $1
+				AND t.tgname LIKE $2
+				AND NOT t.tgisinternal
+			)
+		`, table, table+"_%cache_invalidate%").Scan(&triggerExists)
+		
+		if err != nil {
+			log.Printf("❌ Failed to check trigger for table %s: %v", table, err)
+			allTriggersExist = false
+			continue
+		}
+		
+		if triggerExists {
+			log.Printf("✅ Trigger exists on table: %s", table)
+		} else {
+			log.Printf("❌ Trigger MISSING on table: %s", table)
+			allTriggersExist = false
+		}
+	}
+	
+	if !allTriggersExist {
+		return fmt.Errorf("some NOTIFY triggers are missing")
+	}
+	
+	log.Println("✅ All NOTIFY triggers verified and installed")
+	return nil
 }
