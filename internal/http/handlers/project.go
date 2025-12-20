@@ -162,6 +162,19 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// CRITICAL: Insert owner into project_members table for consistency
+	// This ensures owners appear in member lists and all queries work consistently
+	err = h.queries.AddProjectMember(r.Context(), repo.AddProjectMemberParams{
+		ProjectID: project.ID,
+		UserID:    userUUID,
+		Role:      "owner",
+	})
+	if err != nil {
+		// Log error but don't fail the request - project was created successfully
+		// The owner can still access via projects.owner_id, but member queries will be inconsistent
+		log.Printf("Warning: Failed to add owner to project_members for project %s: %v", project.ID.String(), err)
+	}
+
 	response.JSON(w, http.StatusCreated, ProjectResponse{
 		ID:          project.ID.String(),
 		OwnerID:     project.OwnerID.String(),

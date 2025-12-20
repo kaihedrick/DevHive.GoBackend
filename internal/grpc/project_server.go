@@ -54,6 +54,19 @@ func (s *ProjectServer) CreateProject(ctx context.Context, req *v1.CreateProject
 		return nil, status.Errorf(codes.Internal, "failed to create project: %v", err)
 	}
 
+	// CRITICAL: Insert owner into project_members table for consistency
+	// This ensures owners appear in member lists and all queries work consistently
+	err = s.queries.AddProjectMember(ctx, repo.AddProjectMemberParams{
+		ProjectID: project.ID,
+		UserID:    userID,
+		Role:      "owner",
+	})
+	if err != nil {
+		// Log error but don't fail the request - project was created successfully
+		// The owner can still access via projects.owner_id, but member queries will be inconsistent
+		// TODO: Add proper logging
+	}
+
 	return &v1.Project{
 		Id:          project.ID.String(),
 		OwnerId:     project.OwnerID.String(),

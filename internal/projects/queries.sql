@@ -40,12 +40,22 @@ ON CONFLICT (project_id, user_id) DO UPDATE SET role = $3;
 DELETE FROM project_members WHERE project_id = $1 AND user_id = $2;
 
 -- name: GetProjectMembers :many
-SELECT pm.project_id, pm.user_id, pm.role, pm.joined_at,
-       u.username, u.email, u.first_name, u.last_name, u.avatar_url
+-- Get project owner as a member (for consistency with ListProjectMembers)
+-- Returns same structure as ListProjectMembers but includes avatar_url
+SELECT $1::uuid as project_id, u.id as user_id, u.username, u.email, u.first_name, u.last_name, u.avatar_url, p.created_at as joined_at, 'owner' as role
+FROM projects p
+JOIN users u ON p.owner_id = u.id
+WHERE p.id = $1
+
+UNION ALL
+
+-- Get additional project members
+SELECT pm.project_id, u.id as user_id, u.username, u.email, u.first_name, u.last_name, u.avatar_url, pm.joined_at, pm.role
 FROM project_members pm
 JOIN users u ON pm.user_id = u.id
 WHERE pm.project_id = $1
-ORDER BY pm.joined_at;
+
+ORDER BY joined_at;
 
 -- name: ListProjectMembers :many
 -- Get project owner as a member
