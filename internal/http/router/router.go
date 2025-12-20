@@ -71,6 +71,7 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}, hu
 		auth.Post("/logout", authHandler.Logout)
 		auth.Post("/password/reset-request", authHandler.RequestPasswordReset)
 		auth.Post("/password/reset", authHandler.ResetPassword)
+		auth.With(middleware.RequireAuth(cfg.JWT.SigningKey)).Post("/password/change", authHandler.ChangePassword)
 	})
 
 	// Admin password verification routes (public endpoints for frontend to use)

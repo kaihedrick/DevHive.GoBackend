@@ -16,7 +16,7 @@ import (
 const addProjectMember = `-- name: AddProjectMember :exec
 INSERT INTO project_members (project_id, user_id, role)
 VALUES ($1, $2, $3)
-ON CONFLICT (project_id, user_id) DO UPDATE SET role = $3
+ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role
 `
 
 type AddProjectMemberParams struct {
@@ -25,6 +25,7 @@ type AddProjectMemberParams struct {
 	Role      string    `json:"role"`
 }
 
+// Idempotent: Uses ON CONFLICT to prevent duplicates
 func (q *Queries) AddProjectMember(ctx context.Context, arg AddProjectMemberParams) error {
 	_, err := q.db.Exec(ctx, addProjectMember, arg.ProjectID, arg.UserID, arg.Role)
 	return err
@@ -292,7 +293,18 @@ type CreateTaskParams struct {
 	Status      int32       `json:"status"`
 }
 
-func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
+type CreateTaskRow struct {
+	ID          uuid.UUID   `json:"id"`
+	ProjectID   uuid.UUID   `json:"projectId"`
+	SprintID    pgtype.UUID `json:"sprintId"`
+	AssigneeID  pgtype.UUID `json:"assigneeId"`
+	Description *string     `json:"description"`
+	Status      int32       `json:"status"`
+	CreatedAt   time.Time   `json:"createdAt"`
+	UpdatedAt   time.Time   `json:"updatedAt"`
+}
+
+func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (CreateTaskRow, error) {
 	row := q.db.QueryRow(ctx, createTask,
 		arg.ProjectID,
 		arg.SprintID,
@@ -300,7 +312,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		arg.Description,
 		arg.Status,
 	)
-	var i Task
+	var i CreateTaskRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
@@ -657,6 +669,7 @@ type GetProjectMembersRow struct {
 	AvatarUrl *string   `json:"avatarUrl"`
 }
 
+// Canonical model: project_members is single source of truth (includes owner)
 func (q *Queries) GetProjectMembers(ctx context.Context, projectID uuid.UUID) ([]GetProjectMembersRow, error) {
 	rows, err := q.db.Query(ctx, getProjectMembers, projectID)
 	if err != nil {
@@ -859,6 +872,30 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow
 		&i.ID,
 		&i.Username,
 		&i.Email,
+		&i.FirstName,
+		&i.LastName,
+		&i.Active,
+		&i.AvatarUrl,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getUserByIDWithPassword = `-- name: GetUserByIDWithPassword :one
+SELECT id, username, email, password_h, first_name, last_name, active, avatar_url, created_at, updated_at
+FROM users
+WHERE id = $1
+`
+
+func (q *Queries) GetUserByIDWithPassword(ctx context.Context, id uuid.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByIDWithPassword, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.PasswordH,
 		&i.FirstName,
 		&i.LastName,
 		&i.Active,
@@ -1095,19 +1132,12 @@ func (q *Queries) ListProjectInvites(ctx context.Context, projectID uuid.UUID) (
 }
 
 const listProjectMembers = `-- name: ListProjectMembers :many
-SELECT u.id, u.username, u.email, u.first_name, u.last_name, p.created_at as joined_at, 'owner' as role
-FROM projects p
-JOIN users u ON p.owner_id = u.id
-WHERE p.id = $1
-
-UNION ALL
-
-SELECT u.id, u.username, u.email, u.first_name, u.last_name, pm.joined_at, pm.role
+SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.avatar_url,
+       pm.joined_at, pm.role
 FROM project_members pm
 JOIN users u ON pm.user_id = u.id
 WHERE pm.project_id = $1
-
-ORDER BY joined_at
+ORDER BY pm.joined_at
 `
 
 type ListProjectMembersRow struct {
@@ -1116,14 +1146,14 @@ type ListProjectMembersRow struct {
 	Email     string    `json:"email"`
 	FirstName string    `json:"firstName"`
 	LastName  string    `json:"lastName"`
+	AvatarUrl *string   `json:"avatarUrl"`
 	JoinedAt  time.Time `json:"joinedAt"`
 	Role      string    `json:"role"`
 }
 
-// Get project owner as a member
-// Get additional project members
-func (q *Queries) ListProjectMembers(ctx context.Context, id uuid.UUID) ([]ListProjectMembersRow, error) {
-	rows, err := q.db.Query(ctx, listProjectMembers, id)
+// Canonical model: project_members is single source of truth (includes owner)
+func (q *Queries) ListProjectMembers(ctx context.Context, projectID uuid.UUID) ([]ListProjectMembersRow, error) {
+	rows, err := q.db.Query(ctx, listProjectMembers, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -1137,6 +1167,7 @@ func (q *Queries) ListProjectMembers(ctx context.Context, id uuid.UUID) ([]ListP
 			&i.Email,
 			&i.FirstName,
 			&i.LastName,
+			&i.AvatarUrl,
 			&i.JoinedAt,
 			&i.Role,
 		); err != nil {
@@ -1152,12 +1183,19 @@ func (q *Queries) ListProjectMembers(ctx context.Context, id uuid.UUID) ([]ListP
 
 const listProjectsByUser = `-- name: ListProjectsByUser :many
 SELECT p.id, p.owner_id, p.name, p.description, p.created_at, p.updated_at,
-       u.id as owner_id, u.username as owner_username, u.email as owner_email,
-       u.first_name as owner_first_name, u.last_name as owner_last_name
+       u.username AS owner_username,
+       u.email AS owner_email,
+       u.first_name AS owner_first_name,
+       u.last_name AS owner_last_name,
+       u.avatar_url AS owner_avatar_url
 FROM projects p
-JOIN users u ON p.owner_id = u.id
-LEFT JOIN project_members pm ON p.id = pm.project_id
-WHERE p.owner_id = $1 OR pm.user_id = $1
+JOIN users u ON u.id = p.owner_id
+WHERE p.owner_id = $1
+   OR EXISTS (
+       SELECT 1
+       FROM project_members pm
+       WHERE pm.project_id = p.id AND pm.user_id = $1
+   )
 ORDER BY p.created_at DESC
 LIMIT $2 OFFSET $3
 `
@@ -1175,13 +1213,14 @@ type ListProjectsByUserRow struct {
 	Description    *string   `json:"description"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
-	OwnerID_2      uuid.UUID `json:"ownerId2"`
 	OwnerUsername  string    `json:"ownerUsername"`
 	OwnerEmail     string    `json:"ownerEmail"`
 	OwnerFirstName string    `json:"ownerFirstName"`
 	OwnerLastName  string    `json:"ownerLastName"`
+	OwnerAvatarUrl *string   `json:"ownerAvatarUrl"`
 }
 
+// Fixed: Use EXISTS to avoid duplicates from LEFT JOIN
 func (q *Queries) ListProjectsByUser(ctx context.Context, arg ListProjectsByUserParams) ([]ListProjectsByUserRow, error) {
 	rows, err := q.db.Query(ctx, listProjectsByUser, arg.OwnerID, arg.Limit, arg.Offset)
 	if err != nil {
@@ -1198,11 +1237,11 @@ func (q *Queries) ListProjectsByUser(ctx context.Context, arg ListProjectsByUser
 			&i.Description,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.OwnerID_2,
 			&i.OwnerUsername,
 			&i.OwnerEmail,
 			&i.OwnerFirstName,
 			&i.OwnerLastName,
+			&i.OwnerAvatarUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -1655,9 +1694,20 @@ type UpdateTaskParams struct {
 	AssigneeID  pgtype.UUID `json:"assigneeId"`
 }
 
-func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, error) {
+type UpdateTaskRow struct {
+	ID          uuid.UUID   `json:"id"`
+	ProjectID   uuid.UUID   `json:"projectId"`
+	SprintID    pgtype.UUID `json:"sprintId"`
+	AssigneeID  pgtype.UUID `json:"assigneeId"`
+	Description *string     `json:"description"`
+	Status      int32       `json:"status"`
+	CreatedAt   time.Time   `json:"createdAt"`
+	UpdatedAt   time.Time   `json:"updatedAt"`
+}
+
+func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (UpdateTaskRow, error) {
 	row := q.db.QueryRow(ctx, updateTask, arg.ID, arg.Description, arg.AssigneeID)
-	var i Task
+	var i UpdateTaskRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
@@ -1683,9 +1733,20 @@ type UpdateTaskStatusParams struct {
 	Status int32     `json:"status"`
 }
 
-func (q *Queries) UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusParams) (Task, error) {
+type UpdateTaskStatusRow struct {
+	ID          uuid.UUID   `json:"id"`
+	ProjectID   uuid.UUID   `json:"projectId"`
+	SprintID    pgtype.UUID `json:"sprintId"`
+	AssigneeID  pgtype.UUID `json:"assigneeId"`
+	Description *string     `json:"description"`
+	Status      int32       `json:"status"`
+	CreatedAt   time.Time   `json:"createdAt"`
+	UpdatedAt   time.Time   `json:"updatedAt"`
+}
+
+func (q *Queries) UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusParams) (UpdateTaskStatusRow, error) {
 	row := q.db.QueryRow(ctx, updateTaskStatus, arg.ID, arg.Status)
-	var i Task
+	var i UpdateTaskStatusRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,

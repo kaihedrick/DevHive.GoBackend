@@ -7,10 +7,12 @@ import (
 	"time"
 
 	"devhive-backend/internal/config"
+	"devhive-backend/internal/http/middleware"
 	"devhive-backend/internal/http/response"
 	"devhive-backend/internal/repo"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -348,6 +350,80 @@ func (h *AuthHandler) CheckAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]bool{"authenticated": true})
+}
+
+// ChangePasswordRequest represents a password change request (authenticated user)
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
+}
+
+// ChangePassword handles authenticated user password changes
+func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from context (set by RequireAuth middleware)
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		response.Unauthorized(w, "User ID not found in context")
+		return
+	}
+
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		response.BadRequest(w, "Invalid user ID")
+		return
+	}
+
+	// Decode request
+	var req ChangePasswordRequest
+	if !response.Decode(w, r, &req) {
+		return
+	}
+
+	// Validate request
+	if req.CurrentPassword == "" {
+		response.BadRequest(w, "Current password is required")
+		return
+	}
+	if req.NewPassword == "" {
+		response.BadRequest(w, "New password is required")
+		return
+	}
+	if len(req.NewPassword) < 8 {
+		response.BadRequest(w, "New password must be at least 8 characters")
+		return
+	}
+
+	// Get user to verify current password (with password hash)
+	user, err := h.queries.GetUserByIDWithPassword(r.Context(), userUUID)
+	if err != nil {
+		response.NotFound(w, "User not found")
+		return
+	}
+
+	// Verify current password
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordH), []byte(req.CurrentPassword)); err != nil {
+		response.Unauthorized(w, "Current password is incorrect")
+		return
+	}
+
+	// Hash new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		response.InternalServerError(w, "Failed to hash password")
+		return
+	}
+
+	// Update password
+	err = h.queries.UpdateUserPassword(r.Context(), repo.UpdateUserPasswordParams{
+		ID:        userUUID,
+		PasswordH: string(hashedPassword),
+	})
+	if err != nil {
+		response.InternalServerError(w, "Failed to update password")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]string{"message": "Password updated successfully"})
 }
 
 // generateJWT generates a JWT token for the user

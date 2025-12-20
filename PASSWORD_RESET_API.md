@@ -463,6 +463,7 @@ Content-Type: application/json
 - All fields are optional - only include fields you want to update
 - To clear `avatarUrl`, send an empty string: `"avatarUrl": ""`
 - Fields not included in the request will remain unchanged
+- **⚠️ DO NOT send `password` field here** - use `POST /auth/password/change` instead
 
 **Success Response** (200 OK):
 ```json
@@ -480,7 +481,20 @@ Content-Type: application/json
 ```
 
 **Error Responses**:
-- **400 Bad Request** (Invalid JSON or validation error):
+- **400 Bad Request** (Invalid JSON, validation error, or unknown field):
+```json
+{
+  "type": "bad_request",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "json: unknown field \"password\""
+}
+```
+
+**Note**: If you receive `"json: unknown field \"password\""`, you are trying to update the password through this endpoint. Use `POST /auth/password/change` instead.
+
+OR
+
 ```json
 {
   "type": "bad_request",
@@ -895,6 +909,92 @@ OR
 
 ---
 
+## 4. Change Password (Authenticated)
+**Endpoint**: `POST /api/v1/auth/password/change`
+
+**Authentication**: ✅ Required (Bearer Token)
+
+**Headers**:
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+**Request Body**:
+```json
+{
+  "currentPassword": "oldPassword123",
+  "newPassword": "newSecurePassword456"
+}
+```
+
+**Success Response** (200 OK):
+```json
+{
+  "message": "Password updated successfully"
+}
+```
+
+**Error Responses**:
+- **400 Bad Request** (Missing/Invalid fields):
+```json
+{
+  "type": "bad_request",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Current password is required"
+}
+```
+
+OR
+
+```json
+{
+  "type": "bad_request",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "New password must be at least 8 characters"
+}
+```
+
+- **401 Unauthorized** (Incorrect current password):
+```json
+{
+  "type": "unauthorized",
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "Current password is incorrect"
+}
+```
+
+- **401 Unauthorized** (Missing/Invalid token):
+```json
+{
+  "type": "unauthorized",
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "User ID not found in context"
+}
+```
+
+- **404 Not Found** (User not found):
+```json
+{
+  "type": "not_found",
+  "title": "Not Found",
+  "status": 404,
+  "detail": "User not found"
+}
+```
+
+**Note**: 
+- This endpoint is for **authenticated users** to change their own password
+- Requires the current password for security
+- Different from password reset (forgot password flow) which uses a reset token
+- New password must be at least 8 characters
+
+---
+
 # Common Errors (400/405)
 
 ## 400 Bad Request - Common Causes
@@ -987,8 +1087,9 @@ POST   /api/v1/users/validate-username  ✅ Validate username (POST)
 POST   /api/v1/auth/login               ✅ Login
 POST   /api/v1/auth/refresh             ✅ Refresh token
 POST   /api/v1/auth/logout              ✅ Logout
-POST   /api/v1/auth/password/reset-request ✅ Request password reset
-POST   /api/v1/auth/password/reset      ✅ Reset password
+POST   /api/v1/auth/password/reset-request ✅ Request password reset (forgot password)
+POST   /api/v1/auth/password/reset      ✅ Reset password (forgot password)
+POST   /api/v1/auth/password/change     ✅ Change password (authenticated user)
 ```
 
 **Fix**:
@@ -1087,6 +1188,23 @@ export const useUpdateMe = () => {
     },
   });
 };
+
+// Change password (authenticated user)
+export const useChangePassword = () => {
+  return useMutation({
+    mutationFn: async ({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }) => {
+      const response = await apiClient.post('/auth/password/change', {
+        currentPassword,
+        newPassword,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      // Password change doesn't affect user cache, but you might want to show a success message
+      console.log('Password changed successfully');
+    },
+  });
+};
 ```
 
 **Usage Example**:
@@ -1148,6 +1266,35 @@ function ClearAvatarButton() {
     </button>
   );
 }
+
+// Example: Change password
+function ChangePasswordForm() {
+  const changePassword = useChangePassword();
+  
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    
+    changePassword.mutate({
+      currentPassword: formData.get('currentPassword') as string,
+      newPassword: formData.get('newPassword') as string,
+    });
+  };
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      <input name="currentPassword" type="password" placeholder="Current Password" required />
+      <input name="newPassword" type="password" placeholder="New Password" required minLength={8} />
+      <button type="submit" disabled={changePassword.isPending}>
+        {changePassword.isPending ? 'Changing...' : 'Change Password'}
+      </button>
+      {changePassword.isSuccess && <p>Password changed successfully!</p>}
+      {changePassword.isError && (
+        <p>Error: {changePassword.error.response?.data.detail}</p>
+      )}
+    </form>
+  );
+}
 ```
 
 ### Cache Invalidation on User Updates
@@ -1198,6 +1345,12 @@ interface UpdateUserRequest {
   firstName?: string;
   lastName?: string;
   avatarUrl?: string; // Empty string to clear avatar
+  // ⚠️ DO NOT include password here - use ChangePasswordRequest instead
+}
+
+interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
 }
 
 // Response Interfaces
@@ -1249,6 +1402,7 @@ interface ProblemDetails {
 | `/auth/logout` | POST | ❌* | None | `{message}` (200) | 401 |
 | `/auth/password/reset-request` | POST | ❌ | `{email}` | `{message, token?}` (200) | 400, 500 |
 | `/auth/password/reset` | POST | ❌ | `{token, password}` | `{message}` (200) | 400, 500 |
+| `/auth/password/change` | POST | ✅ | `{currentPassword, newPassword}` | `{message}` (200) | 400, 401, 404, 500 |
 
 *Uses refresh token cookie instead of Bearer token
 

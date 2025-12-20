@@ -3,6 +3,11 @@ SELECT id, username, email, first_name, last_name, active, avatar_url, created_a
 FROM users
 WHERE id = $1;
 
+-- name: GetUserByIDWithPassword :one
+SELECT id, username, email, password_h, first_name, last_name, active, avatar_url, created_at, updated_at
+FROM users
+WHERE id = $1;
+
 -- name: GetUserByUsername :one
 SELECT id, username, email, password_h, first_name, last_name, active, avatar_url, created_at, updated_at
 FROM users

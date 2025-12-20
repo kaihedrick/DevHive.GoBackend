@@ -85,6 +85,7 @@ type Task struct {
 	ProjectID   uuid.UUID   `json:"projectId"`
 	SprintID    pgtype.UUID `json:"sprintId"`
 	AssigneeID  pgtype.UUID `json:"assigneeId"`
+	Title       string      `json:"title"`
 	Description *string     `json:"description"`
 	Status      int32       `json:"status"`
 	CreatedAt   time.Time   `json:"createdAt"`
