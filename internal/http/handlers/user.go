@@ -89,6 +89,15 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// UpdateUserRequest represents a partial user update request (all fields optional)
+type UpdateUserRequest struct {
+	Username  *string `json:"username,omitempty"`
+	Email     *string `json:"email,omitempty"`
+	FirstName *string `json:"firstName,omitempty"`
+	LastName  *string `json:"lastName,omitempty"`
+	AvatarURL *string `json:"avatarUrl,omitempty"`
+}
+
 // GetMe handles getting current user
 func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
@@ -123,6 +132,96 @@ func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 		AvatarURL: avatarURL,
 		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt: user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	})
+}
+
+// UpdateMe handles updating the current user's profile (PATCH /users/me)
+func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from context (set by RequireAuth middleware)
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		response.Unauthorized(w, "User ID not found in context")
+		return
+	}
+
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		response.BadRequest(w, "Invalid user ID")
+		return
+	}
+
+	// Get current user to merge with updates
+	currentUser, err := h.queries.GetUserByID(r.Context(), userUUID)
+	if err != nil {
+		response.NotFound(w, "User not found")
+		return
+	}
+
+	// Decode request body (partial update - all fields optional)
+	var req UpdateUserRequest
+	if !response.Decode(w, r, &req) {
+		return
+	}
+
+	// Merge provided fields with existing values
+	username := currentUser.Username
+	if req.Username != nil {
+		username = *req.Username
+	}
+
+	email := currentUser.Email
+	if req.Email != nil {
+		email = *req.Email
+	}
+
+	firstName := currentUser.FirstName
+	if req.FirstName != nil {
+		firstName = *req.FirstName
+	}
+
+	lastName := currentUser.LastName
+	if req.LastName != nil {
+		lastName = *req.LastName
+	}
+
+	var avatarURL *string = currentUser.AvatarUrl
+	if req.AvatarURL != nil {
+		if *req.AvatarURL == "" {
+			avatarURL = nil // Allow clearing avatar by sending empty string
+		} else {
+			avatarURL = req.AvatarURL
+		}
+	}
+
+	// Update user
+	updatedUser, err := h.queries.UpdateUser(r.Context(), repo.UpdateUserParams{
+		ID:        userUUID,
+		Username:  username,
+		Email:     email,
+		FirstName: firstName,
+		LastName:  lastName,
+		AvatarUrl: avatarURL,
+	})
+	if err != nil {
+		response.BadRequest(w, "Failed to update user: "+err.Error())
+		return
+	}
+
+	avatarURLStr := ""
+	if updatedUser.AvatarUrl != nil {
+		avatarURLStr = *updatedUser.AvatarUrl
+	}
+
+	response.JSON(w, http.StatusOK, UserResponse{
+		ID:        updatedUser.ID.String(),
+		Username:  updatedUser.Username,
+		Email:     updatedUser.Email,
+		FirstName: updatedUser.FirstName,
+		LastName:  updatedUser.LastName,
+		Active:    updatedUser.Active,
+		AvatarURL: avatarURLStr,
+		CreatedAt: updatedUser.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt: updatedUser.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	})
 }
 

@@ -85,6 +85,7 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}, hu
 		users.Get("/validate-username", userHandler.ValidateUsername)
 		users.Post("/validate-username", userHandler.ValidateUsername)
 		users.With(middleware.RequireAuth(cfg.JWT.SigningKey)).Get("/me", userHandler.GetMe)
+		users.With(middleware.RequireAuth(cfg.JWT.SigningKey)).Patch("/me", userHandler.UpdateMe)
 		users.With(middleware.RequireAuth(cfg.JWT.SigningKey)).Get("/{userId}", userHandler.GetUser)
 	})
 
