@@ -486,15 +486,22 @@ func (h *MessageHandler) WebSocketHandler(w http.ResponseWriter, r *http.Request
 	select {
 	case h.hub.Register <- client:
 		// Client registered successfully
+		log.Printf("WebSocket client registered: user=%s, project=%s", userID, projectID)
 	default:
 		log.Printf("Failed to register WebSocket client: hub Register channel full")
+		// Send proper close frame before closing
+		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "Server overloaded"))
 		conn.Close()
 		return
 	}
 
 	// Start goroutines for reading and writing
+	// Handler returns here - connection is managed by ReadPump/WritePump
 	go client.ReadPump()
 	go client.WritePump()
+	
+	// Handler returns immediately - connection lifecycle is managed by ReadPump/WritePump goroutines
+	// This is correct: we don't want to block the HTTP handler
 }
 
 // GetWebSocketStatus returns connection status for debugging

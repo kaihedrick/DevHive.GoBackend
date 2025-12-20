@@ -176,6 +176,8 @@ func (h *Hub) BroadcastToAll(messageType string, data interface{}) {
 func (c *Client) ReadPump() {
 	defer func() {
 		c.hub.unregister <- c
+		// Only close if WritePump hasn't already closed it
+		// WritePump is responsible for sending close frame
 		c.conn.Close()
 	}()
 
@@ -189,9 +191,11 @@ func (c *Client) ReadPump() {
 	for {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			// Check if this is a normal close
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNormalClosure) {
 				log.Printf("WebSocket read error: %v", err)
 			}
+			// Break on any error (including normal close)
 			break
 		}
 
@@ -212,6 +216,8 @@ func (c *Client) WritePump() {
 	ticker := time.NewTicker(54 * time.Second)
 	defer func() {
 		ticker.Stop()
+		// WritePump is responsible for sending close frame
+		// ReadPump will handle cleanup after we close the send channel
 		c.conn.Close()
 	}()
 
@@ -220,22 +226,27 @@ func (c *Client) WritePump() {
 		case message, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				// Channel closed - send close frame and exit
+				// This happens when hub unregisters the client
+				c.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 				return
 			}
 
 			w, err := c.conn.NextWriter(websocket.TextMessage)
 			if err != nil {
+				// Connection error - ReadPump will handle cleanup
 				return
 			}
 			w.Write(message)
 
 			if err := w.Close(); err != nil {
+				// Write error - ReadPump will handle cleanup
 				return
 			}
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				// Ping failed - connection is dead, ReadPump will handle cleanup
 				return
 			}
 		}
