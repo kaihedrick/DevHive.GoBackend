@@ -132,6 +132,11 @@ func (l *NotifyListener) handleNotification(notification *pgconn.Notification) {
 	if payload.Resource == "project_members" {
 		log.Printf("Project member notification: action=%s, project_id=%s, member_id=%s",
 			payload.Action, payload.ProjectID, payload.ID)
+
+		// Log WebSocket connection status BEFORE broadcasting
+		total, matching, users := l.hub.GetProjectConnections(payload.ProjectID)
+		log.Printf("WebSocket status BEFORE broadcast for project %s: total_clients=%d, matching=%d, users=%v",
+			payload.ProjectID, total, matching, users)
 	}
 
 	// Build message data
@@ -148,6 +153,16 @@ func (l *NotifyListener) handleNotification(notification *pgconn.Notification) {
 	if payload.Resource == "projects" && (payload.Action == "DELETE" || payload.Action == "INSERT") {
 		l.hub.BroadcastToAll("cache_invalidate", messageData)
 		log.Printf("Broadcasted project %s cache invalidation to all clients: project_id=%s", payload.Action, payload.ProjectID)
+	} else if payload.Resource == "project_members" {
+		// Broadcast member changes to ALL clients to ensure owners see updates
+		// even if they're not actively viewing the project WebSocket
+		l.hub.BroadcastToAll("cache_invalidate", messageData)
+		log.Printf("Broadcasted project_members %s cache invalidation to all clients: project_id=%s", payload.Action, payload.ProjectID)
+
+		// Log WebSocket connection status AFTER broadcasting
+		total, matching, users := l.hub.GetProjectConnections(payload.ProjectID)
+		log.Printf("WebSocket status AFTER broadcast for project %s: total_clients=%d, matching=%d, users=%v",
+			payload.ProjectID, total, matching, users)
 	} else {
 		// For other changes, broadcast project-scoped
 		l.hub.BroadcastToProject(payload.ProjectID, "cache_invalidate", messageData)
