@@ -57,7 +57,7 @@ func setupV1Routes(cfg *config.Config, queries *repo.Queries, db interface{}, hu
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(cfg, queries)
 	userHandler := handlers.NewUserHandler(queries)
-	projectHandler := handlers.NewProjectHandler(queries, ws.GlobalHub)
+	projectHandler := handlers.NewProjectHandler(queries)
 	sprintHandler := handlers.NewSprintHandler(queries)
 	taskHandler := handlers.NewTaskHandler(queries)
 	messageHandler := handlers.NewMessageHandler(queries, cfg, hub)
@@ -201,7 +201,7 @@ func setupLegacyRoutes(cfg *config.Config, queries *repo.Queries) chi.Router {
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(cfg, queries)
 	userHandler := handlers.NewUserHandler(queries)
-	projectHandler := handlers.NewProjectHandler(queries, ws.GlobalHub)
+	projectHandler := handlers.NewProjectHandler(queries)
 	sprintHandler := handlers.NewSprintHandler(queries)
 	taskHandler := handlers.NewTaskHandler(queries)
 	messageHandler := handlers.NewMessageHandler(queries, cfg, ws.GlobalHub)
