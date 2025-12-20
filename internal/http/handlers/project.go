@@ -212,8 +212,8 @@ func (h *ProjectHandler) GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to project")
@@ -376,8 +376,8 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to project")
@@ -453,8 +453,8 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to project")
@@ -497,8 +497,8 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to project")
@@ -547,8 +547,8 @@ func (h *ProjectHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to project")
@@ -602,8 +602,8 @@ func (h *ProjectHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to project")
@@ -690,8 +690,8 @@ func (h *ProjectHandler) JoinProject(w http.ResponseWriter, r *http.Request) {
 
 	// Check if user is already a member or owner
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
 	if err != nil {
 		response.InternalServerError(w, "Failed to check project access")
@@ -821,8 +821,8 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 
 	// Check if user is already a member
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      invite.ProjectID,
-		OwnerID: userUUID,
+		ProjectID: invite.ProjectID,
+		UserID:    userUUID,
 	})
 	if err != nil {
 		response.InternalServerError(w, "Failed to check project access")

@@ -32,20 +32,20 @@ func (q *Queries) AddProjectMember(ctx context.Context, arg AddProjectMemberPara
 }
 
 const checkProjectAccess = `-- name: CheckProjectAccess :one
-SELECT (
-    EXISTS(SELECT 1 FROM projects p WHERE p.id = $1 AND p.owner_id = $2) OR
-    EXISTS(SELECT 1 FROM project_members pm WHERE pm.project_id = $1 AND pm.user_id = $2)
-)::boolean as has_access
+SELECT EXISTS(
+    SELECT 1 FROM project_members pm 
+    WHERE pm.project_id = $1 AND pm.user_id = $2
+) as has_access
 `
 
 type CheckProjectAccessParams struct {
-	ID      uuid.UUID `json:"id"`
-	OwnerID uuid.UUID `json:"ownerId"`
+	ProjectID uuid.UUID `json:"projectId"`
+	UserID    uuid.UUID `json:"userId"`
 }
 
-// Check if user is project owner OR project member
+// Check if user is a project member (canonical model: project_members is single source of truth, includes owner)
 func (q *Queries) CheckProjectAccess(ctx context.Context, arg CheckProjectAccessParams) (bool, error) {
-	row := q.db.QueryRow(ctx, checkProjectAccess, arg.ID, arg.OwnerID)
+	row := q.db.QueryRow(ctx, checkProjectAccess, arg.ProjectID, arg.UserID)
 	var has_access bool
 	err := row.Scan(&has_access)
 	return has_access, err

@@ -86,8 +86,8 @@ func (h *TaskHandler) ListTasksByProject(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to project")
@@ -330,8 +330,8 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
 	if err != nil {
 		response.InternalServerError(w, "Failed to verify project access")
@@ -430,8 +430,8 @@ func (h *TaskHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      task.ProjectID,
-		OwnerID: userUUID,
+		ProjectID: task.ProjectID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to task")
@@ -532,8 +532,8 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      currentTask.ProjectID,
-		OwnerID: userUUID,
+		ProjectID: currentTask.ProjectID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to task")
@@ -619,8 +619,8 @@ func (h *TaskHandler) UpdateTaskStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      currentTask.ProjectID,
-		OwnerID: userUUID,
+		ProjectID: currentTask.ProjectID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to task")
@@ -686,8 +686,8 @@ func (h *TaskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      currentTask.ProjectID,
-		OwnerID: userUUID,
+		ProjectID: currentTask.ProjectID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to task")

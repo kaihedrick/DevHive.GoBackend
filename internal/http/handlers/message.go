@@ -83,8 +83,8 @@ func (h *MessageHandler) ListMessagesByProject(w http.ResponseWriter, r *http.Re
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to project")
@@ -192,8 +192,8 @@ func (h *MessageHandler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to project")
@@ -293,8 +293,8 @@ func (h *MessageHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to project")
@@ -433,8 +433,8 @@ func (h *MessageHandler) WebSocketHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
 	if err != nil {
 		log.Printf("ERROR: CheckProjectAccess failed for project %s, user %s: %v",

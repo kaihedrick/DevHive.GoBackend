@@ -95,8 +95,8 @@ func (h *SprintHandler) ListSprintsByProject(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to project")
@@ -191,8 +191,8 @@ func (h *SprintHandler) CreateSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
+		ProjectID: projectUUID,
+		UserID:    userUUID,
 	})
 	if err != nil {
 		response.InternalServerError(w, "Failed to verify project access")
@@ -309,8 +309,8 @@ func (h *SprintHandler) GetSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      sprint.ProjectID,
-		OwnerID: userUUID,
+		ProjectID: sprint.ProjectID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to sprint")
@@ -376,8 +376,8 @@ func (h *SprintHandler) UpdateSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      currentSprint.ProjectID,
-		OwnerID: userUUID,
+		ProjectID: currentSprint.ProjectID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to sprint")
@@ -496,8 +496,8 @@ func (h *SprintHandler) DeleteSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      currentSprint.ProjectID,
-		OwnerID: userUUID,
+		ProjectID: currentSprint.ProjectID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to sprint")
@@ -547,8 +547,8 @@ func (h *SprintHandler) UpdateSprintStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      currentSprint.ProjectID,
-		OwnerID: userUUID,
+		ProjectID: currentSprint.ProjectID,
+		UserID:    userUUID,
 	})
 	if err != nil || !hasAccess {
 		response.Forbidden(w, "Access denied to sprint")
