@@ -6,11 +6,11 @@ This document describes how to integrate real-time cache invalidation into your 
 
 The backend now supports real-time cache invalidation using PostgreSQL NOTIFY and WebSockets. When data changes in the database (projects, sprints, tasks, project_members), the backend automatically sends cache invalidation notifications to connected WebSocket clients.
 
-**Important**: Resource names in cache invalidation notifications match the database table names exactly:
-- `projects` → `project` resource
-- `sprints` → `sprint` resource  
-- `tasks` → `task` resource
-- `project_members` → `project_members` resource (plural, matching table name)
+**Important**: Resource names in cache invalidation notifications are normalized to singular (except `project_members`):
+- `projects` table → `project` resource
+- `sprints` table → `sprint` resource  
+- `tasks` table → `task` resource
+- `project_members` table → `project_members` resource (kept plural for consistency)
 
 ## Architecture
 

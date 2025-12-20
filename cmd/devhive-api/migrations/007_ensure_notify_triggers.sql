@@ -9,6 +9,7 @@ DECLARE
   notification_payload JSONB;
   project_uuid UUID;
   record_id TEXT;
+  resource_name TEXT;
 BEGIN
   -- Extract project_id based on resource type
   IF TG_TABLE_NAME = 'projects' THEN
@@ -31,9 +32,23 @@ BEGIN
     record_id := COALESCE(NEW.id::text, OLD.id::text);
   END IF;
   
+  -- Normalize resource name to singular for frontend consistency
+  -- Frontend expects: 'project', 'sprint', 'task', 'project_members'
+  IF TG_TABLE_NAME = 'projects' THEN
+    resource_name := 'project';
+  ELSIF TG_TABLE_NAME = 'sprints' THEN
+    resource_name := 'sprint';
+  ELSIF TG_TABLE_NAME = 'tasks' THEN
+    resource_name := 'task';
+  ELSIF TG_TABLE_NAME = 'project_members' THEN
+    resource_name := 'project_members'; -- Keep plural for consistency
+  ELSE
+    resource_name := TG_TABLE_NAME; -- Fallback to table name
+  END IF;
+  
   -- Build minimal payload (< 1KB)
   notification_payload := json_build_object(
-    'resource', TG_TABLE_NAME,
+    'resource', resource_name,
     'id', record_id,
     'action', TG_OP,
     'project_id', project_uuid::text,
