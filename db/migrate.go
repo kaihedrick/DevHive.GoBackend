@@ -88,16 +88,24 @@ func RunMigrations(db *sql.DB) error {
 			errStr := err.Error()
 			if strings.Contains(errStr, "already exists") || 
 			   strings.Contains(errStr, "duplicate key") ||
-			   strings.Contains(errStr, "relation") && strings.Contains(errStr, "already exists") {
-				log.Printf("Migration %s: Some objects already exist (idempotent), continuing...", filename)
+			   (strings.Contains(errStr, "relation") && strings.Contains(errStr, "already exists")) ||
+			   (strings.Contains(errStr, "does not exist") && strings.Contains(errStr, "DROP")) {
+				log.Printf("Migration %s: Some objects already exist or don't exist (idempotent), continuing...", filename)
 				// Continue - this is expected for idempotent migrations
 			} else {
+				log.Printf("❌ Migration %s failed with error: %v", filename, err)
 				return fmt.Errorf("failed to execute migration %s: %w", filename, err)
 			}
+		} else {
+			log.Printf("✅ Migration %s executed successfully", filename)
 		}
 
-		// Record migration as applied
-		_, err = db.Exec("INSERT INTO schema_migrations (version) VALUES ($1)", filename)
+		// Record migration as applied (use ON CONFLICT to handle idempotency)
+		_, err = db.Exec(`
+			INSERT INTO schema_migrations (version) 
+			VALUES ($1) 
+			ON CONFLICT (version) DO NOTHING
+		`, filename)
 		if err != nil {
 			return fmt.Errorf("failed to record migration %s: %w", filename, err)
 		}
