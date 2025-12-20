@@ -93,6 +93,7 @@ func (l *NotifyListener) listen() {
 		}
 
 		// Main loop: wait for notifications
+		log.Println("⏳ NOTIFY listener waiting for notifications on 'cache_invalidate' channel...")
 		for {
 			notification, err := conn.WaitForNotification(l.ctx)
 			if err != nil {
@@ -100,12 +101,13 @@ func (l *NotifyListener) listen() {
 					log.Println("NOTIFY listener context canceled, shutting down")
 					return
 				}
-				log.Printf("Error waiting for notification: %v. Reconnecting...", err)
+				log.Printf("❌ Error waiting for notification: %v. Reconnecting...", err)
 				conn.Close(l.ctx)
 				break // Break inner loop to reconnect
 			}
 
 			// Handle notification
+			log.Printf("📨 Notification received at %s", time.Now().Format(time.RFC3339))
 			l.handleNotification(notification)
 		}
 	}
@@ -113,13 +115,15 @@ func (l *NotifyListener) listen() {
 
 // handleNotification parses the notification payload and broadcasts to WebSocket hub
 func (l *NotifyListener) handleNotification(notification *pgconn.Notification) {
+	log.Printf("🔔 RAW NOTIFY received from PostgreSQL: channel=%s, payload=%s", notification.Channel, notification.Payload)
+
 	var payload CacheInvalidationPayload
 	if err := json.Unmarshal([]byte(notification.Payload), &payload); err != nil {
-		log.Printf("Failed to parse notification payload: %v. Payload: %s", err, notification.Payload)
+		log.Printf("❌ Failed to parse notification payload: %v. Payload: %s", err, notification.Payload)
 		return
 	}
 
-	log.Printf("NOTIFY received: resource=%s, action=%s, project_id=%s, id=%s",
+	log.Printf("✅ NOTIFY received: resource=%s, action=%s, project_id=%s, id=%s",
 		payload.Resource, payload.Action, payload.ProjectID, payload.ID)
 
 	// Validate payload has required fields
