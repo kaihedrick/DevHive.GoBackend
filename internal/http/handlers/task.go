@@ -318,7 +318,7 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user is project owner or admin (only owners and admins can create tasks)
+	// Check if user has access to project (any member can create tasks)
 	projectUUID, err := uuid.Parse(projectID)
 	if err != nil {
 		response.BadRequest(w, "Invalid project ID")
@@ -329,7 +329,7 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "Invalid user ID")
 		return
 	}
-	isOwnerOrAdmin, err := h.queries.CheckProjectOwnerOrAdmin(r.Context(), repo.CheckProjectOwnerOrAdminParams{
+	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
 		ID:      projectUUID,
 		OwnerID: userUUID,
 	})
@@ -337,8 +337,8 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		response.InternalServerError(w, "Failed to verify project access")
 		return
 	}
-	if !isOwnerOrAdmin {
-		response.Forbidden(w, "Only project owners and admins can create tasks")
+	if !hasAccess {
+		response.Forbidden(w, "Access denied to project")
 		return
 	}
 
