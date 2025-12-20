@@ -362,6 +362,20 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 			response.BadRequest(w, "Invalid sprint ID format")
 			return
 		}
+		
+		// Validate that sprint exists and belongs to the project
+		sprint, err := h.queries.GetSprintByID(r.Context(), sprintID)
+		if err != nil {
+			response.BadRequest(w, "Sprint not found")
+			return
+		}
+		
+		// Verify sprint belongs to the same project
+		if sprint.ProjectID != projectUUID {
+			response.BadRequest(w, "Sprint does not belong to this project")
+			return
+		}
+		
 		sprintUUID = pgtype.UUID{Bytes: sprintID, Valid: true}
 	}
 
@@ -371,6 +385,21 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 			response.BadRequest(w, "Invalid assignee ID format")
 			return
 		}
+		
+		// Validate that assignee is a member of the project
+		hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
+			ProjectID: projectUUID,
+			UserID:    assigneeID,
+		})
+		if err != nil {
+			response.InternalServerError(w, "Failed to verify assignee access")
+			return
+		}
+		if !hasAccess {
+			response.BadRequest(w, "Assignee is not a member of this project")
+			return
+		}
+		
 		assigneeUUID = pgtype.UUID{Bytes: assigneeID, Valid: true}
 	}
 

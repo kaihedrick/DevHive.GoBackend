@@ -65,12 +65,28 @@ func (s *TaskServer) CreateTask(ctx context.Context, req *v1.CreateTaskRequest) 
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "invalid sprint ID: %v", err)
 		}
+		
+		// Validate that sprint exists and belongs to the project
+		sprint, err := s.queries.GetSprintByID(ctx, sprintUUID)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "sprint not found: %v", err)
+		}
+		
+		// Verify sprint belongs to the same project
+		if sprint.ProjectID != projectID {
+			return nil, status.Errorf(codes.InvalidArgument, "sprint does not belong to this project")
+		}
+		
 		sprintID = pgtype.UUID{Bytes: sprintUUID, Valid: true}
 	}
+
+	// Note: gRPC CreateTaskRequest doesn't include assignee_id, so we leave it null
+	var assigneeID pgtype.UUID
 
 	task, err := s.queries.CreateTask(ctx, repo.CreateTaskParams{
 		ProjectID:   projectID,
 		SprintID:    sprintID,
+		AssigneeID:  assigneeID,
 		Description: &req.Description,
 		Status:      1, // Default status: TODO
 	})
@@ -78,19 +94,19 @@ func (s *TaskServer) CreateTask(ctx context.Context, req *v1.CreateTaskRequest) 
 		return nil, status.Errorf(codes.Internal, "failed to create task: %v", err)
 	}
 
-	var sprintIDStr, assigneeID string
+	var sprintIDStr, assigneeIDStr string
 	if task.SprintID.Valid {
 		sprintIDStr = uuid.UUID(task.SprintID.Bytes).String()
 	}
 	if task.AssigneeID.Valid {
-		assigneeID = uuid.UUID(task.AssigneeID.Bytes).String()
+		assigneeIDStr = uuid.UUID(task.AssigneeID.Bytes).String()
 	}
 
 	return &v1.Task{
 		Id:          task.ID.String(),
 		ProjectId:   task.ProjectID.String(),
 		SprintId:    sprintIDStr,
-		AssigneeId:  assigneeID,
+		AssigneeId:  assigneeIDStr,
 		Title:       getStringValue(task.Description), // Use description as title for gRPC compatibility
 		Description: getStringValue(task.Description),
 		Status:      int32(task.Status),
