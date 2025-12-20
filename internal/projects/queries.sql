@@ -90,6 +90,17 @@ SELECT (
     EXISTS(SELECT 1 FROM project_members pm WHERE pm.project_id = $1 AND pm.user_id = $2 AND pm.role = 'admin')
 )::boolean as is_owner_or_admin;
 
+-- name: GetUserProjectRole :one
+-- Get the user's role in a project (returns 'owner', 'admin', 'member', 'viewer', or NULL if not a member)
+SELECT 
+    CASE 
+        WHEN p.owner_id = $2 THEN 'owner'
+        ELSE COALESCE(pm.role, NULL)
+    END as role
+FROM projects p
+LEFT JOIN project_members pm ON p.id = pm.project_id AND pm.user_id = $2
+WHERE p.id = $1;
+
 -- name: CreateProjectInvite :one
 INSERT INTO project_invites (project_id, created_by, invite_token, expires_at, max_uses)
 VALUES ($1, $2, $3, $4, $5)

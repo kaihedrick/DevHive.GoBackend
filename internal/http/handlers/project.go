@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"strconv"
@@ -52,6 +53,13 @@ type ProjectResponse struct {
 		FirstName string `json:"firstName"`
 		LastName  string `json:"lastName"`
 	} `json:"owner"`
+	UserRole    *string `json:"userRole,omitempty"` // Current user's role: "owner", "admin", "member", "viewer"
+	Permissions struct {
+		CanViewInvites   bool `json:"canViewInvites"`
+		CanCreateInvites bool `json:"canCreateInvites"`
+		CanRevokeInvites bool `json:"canRevokeInvites"`
+		CanManageMembers bool `json:"canManageMembers"`
+	} `json:"permissions,omitempty"`
 }
 
 // ListProjects handles listing projects for a user
@@ -204,6 +212,9 @@ func (h *ProjectHandler) GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get user's role and permissions
+	userRole, permissions := h.getUserRoleAndPermissions(r.Context(), projectUUID, userUUID)
+
 	response.JSON(w, http.StatusOK, ProjectResponse{
 		ID:          project.ID.String(),
 		OwnerID:     project.OwnerID.String(),
@@ -224,6 +235,8 @@ func (h *ProjectHandler) GetProject(w http.ResponseWriter, r *http.Request) {
 			FirstName: project.OwnerFirstName,
 			LastName:  project.OwnerLastName,
 		},
+		UserRole:    userRole,
+		Permissions: permissions,
 	})
 }
 
@@ -674,6 +687,8 @@ func (h *ProjectHandler) JoinProject(w http.ResponseWriter, r *http.Request) {
 			response.InternalServerError(w, "Failed to get project")
 			return
 		}
+		// Get user's role and permissions
+		userRole, permissions := h.getUserRoleAndPermissions(r.Context(), projectUUID, userUUID)
 		response.JSON(w, http.StatusOK, ProjectResponse{
 			ID:          project.ID.String(),
 			OwnerID:     project.OwnerID.String(),
@@ -694,6 +709,8 @@ func (h *ProjectHandler) JoinProject(w http.ResponseWriter, r *http.Request) {
 				FirstName: project.OwnerFirstName,
 				LastName:  project.OwnerLastName,
 			},
+			UserRole:    userRole,
+			Permissions: permissions,
 		})
 		return
 	}
@@ -716,6 +733,9 @@ func (h *ProjectHandler) JoinProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get user's role and permissions (user just joined, so they're a member)
+	userRole, permissions := h.getUserRoleAndPermissions(r.Context(), projectUUID, userUUID)
+
 	response.JSON(w, http.StatusOK, ProjectResponse{
 		ID:          project.ID.String(),
 		OwnerID:     project.OwnerID.String(),
@@ -736,6 +756,8 @@ func (h *ProjectHandler) JoinProject(w http.ResponseWriter, r *http.Request) {
 			FirstName: project.OwnerFirstName,
 			LastName:  project.OwnerLastName,
 		},
+		UserRole:    userRole,
+		Permissions: permissions,
 	})
 }
 
@@ -801,6 +823,8 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 			response.InternalServerError(w, "Failed to get project")
 			return
 		}
+		// Get user's role and permissions
+		userRole, permissions := h.getUserRoleAndPermissions(r.Context(), invite.ProjectID, userUUID)
 		response.JSON(w, http.StatusOK, ProjectResponse{
 			ID:          project.ID.String(),
 			OwnerID:     project.OwnerID.String(),
@@ -821,6 +845,8 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 				FirstName: project.OwnerFirstName,
 				LastName:  project.OwnerLastName,
 			},
+			UserRole:    userRole,
+			Permissions: permissions,
 		})
 		return
 	}
@@ -850,6 +876,9 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get user's role and permissions (user just joined, so they're a member)
+	userRole, permissions := h.getUserRoleAndPermissions(r.Context(), invite.ProjectID, userUUID)
+
 	response.JSON(w, http.StatusOK, ProjectResponse{
 		ID:          project.ID.String(),
 		OwnerID:     project.OwnerID.String(),
@@ -870,6 +899,8 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 			FirstName: project.OwnerFirstName,
 			LastName:  project.OwnerLastName,
 		},
+		UserRole:    userRole,
+		Permissions: permissions,
 	})
 }
 
@@ -1135,4 +1166,78 @@ func (h *ProjectHandler) RevokeInvite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Invite revoked successfully"})
+}
+
+// getUserRoleAndPermissions gets the user's role and calculates permissions for a project
+func (h *ProjectHandler) getUserRoleAndPermissions(ctx context.Context, projectID, userID uuid.UUID) (*string, struct {
+	CanViewInvites   bool `json:"canViewInvites"`
+	CanCreateInvites bool `json:"canCreateInvites"`
+	CanRevokeInvites bool `json:"canRevokeInvites"`
+	CanManageMembers bool `json:"canManageMembers"`
+}) {
+	// Check if user is owner
+	isOwner, err := h.queries.CheckProjectOwner(ctx, repo.CheckProjectOwnerParams{
+		ID:      projectID,
+		OwnerID: userID,
+	})
+	if err != nil {
+		// On error, return nil role and no permissions
+		return nil, struct {
+			CanViewInvites   bool `json:"canViewInvites"`
+			CanCreateInvites bool `json:"canCreateInvites"`
+			CanRevokeInvites bool `json:"canRevokeInvites"`
+			CanManageMembers bool `json:"canManageMembers"`
+		}{}
+	}
+
+	var userRole string
+	var permissions struct {
+		CanViewInvites   bool `json:"canViewInvites"`
+		CanCreateInvites bool `json:"canCreateInvites"`
+		CanRevokeInvites bool `json:"canRevokeInvites"`
+		CanManageMembers bool `json:"canManageMembers"`
+	}
+
+	if isOwner {
+		userRole = "owner"
+		permissions.CanViewInvites = true
+		permissions.CanCreateInvites = true
+		permissions.CanRevokeInvites = true
+		permissions.CanManageMembers = true
+	} else {
+		// Get user's role from project_members
+		roleResult, err := h.queries.GetUserProjectRole(ctx, repo.GetUserProjectRoleParams{
+			ID:      projectID,
+			OwnerID: userID,
+		})
+		if err != nil {
+			// Default to member if query fails
+			userRole = "member"
+		} else {
+			// Convert interface{} to string
+			// The query returns NULL if user is not a member, or a string role
+			if roleStr, ok := roleResult.(string); ok && roleStr != "" {
+				userRole = roleStr
+			} else {
+				// Default to member if role not found or NULL
+				userRole = "member"
+			}
+		}
+
+		// Set permissions based on role
+		if userRole == "admin" {
+			permissions.CanViewInvites = true
+			permissions.CanCreateInvites = true
+			permissions.CanRevokeInvites = true
+			permissions.CanManageMembers = true
+		} else {
+			// member or viewer - no invite permissions
+			permissions.CanViewInvites = false
+			permissions.CanCreateInvites = false
+			permissions.CanRevokeInvites = false
+			permissions.CanManageMembers = false
+		}
+	}
+
+	return &userRole, permissions
 }

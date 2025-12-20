@@ -893,6 +893,30 @@ func (q *Queries) GetUserByUsername(ctx context.Context, lower string) (User, er
 	return i, err
 }
 
+const getUserProjectRole = `-- name: GetUserProjectRole :one
+SELECT 
+    CASE 
+        WHEN p.owner_id = $2 THEN 'owner'
+        ELSE COALESCE(pm.role, NULL)
+    END as role
+FROM projects p
+LEFT JOIN project_members pm ON p.id = pm.project_id AND pm.user_id = $2
+WHERE p.id = $1
+`
+
+type GetUserProjectRoleParams struct {
+	ID      uuid.UUID `json:"id"`
+	OwnerID uuid.UUID `json:"ownerId"`
+}
+
+// Get the user's role in a project (returns 'owner', 'admin', 'member', 'viewer', or NULL if not a member)
+func (q *Queries) GetUserProjectRole(ctx context.Context, arg GetUserProjectRoleParams) (interface{}, error) {
+	row := q.db.QueryRow(ctx, getUserProjectRole, arg.ID, arg.OwnerID)
+	var role interface{}
+	err := row.Scan(&role)
+	return role, err
+}
+
 const incrementInviteUseCount = `-- name: IncrementInviteUseCount :exec
 UPDATE project_invites
 SET used_count = used_count + 1, updated_at = now()
