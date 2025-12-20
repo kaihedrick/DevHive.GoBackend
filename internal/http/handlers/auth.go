@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"strings"
 	"time"
 
 	"devhive-backend/internal/config"
@@ -447,3 +448,69 @@ func generateRandomToken(length int) string {
 	rand.Read(bytes)
 	return hex.EncodeToString(bytes)
 }
+
+// ValidateToken handles token validation requests
+// Returns token validity and expiration info without requiring refresh
+func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
+	// Extract token from Authorization header or query param
+	tokenString := r.Header.Get("Authorization")
+	if len(tokenString) > 7 && tokenString[:7] == "Bearer " {
+		tokenString = tokenString[7:]
+	}
+	if tokenString == "" {
+		tokenString = r.URL.Query().Get("token")
+	}
+
+	if tokenString == "" {
+		response.JSON(w, http.StatusOK, map[string]interface{}{
+			"valid": false,
+			"error": "No token provided",
+		})
+		return
+	}
+
+	// Parse token without validation to check expiration
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return []byte(h.cfg.JWT.SigningKey), nil
+	}, jwt.WithoutClaimsValidation())
+
+	var isValid bool
+	var expiresAt *time.Time
+	var errorMsg string
+
+	if err != nil {
+		isValid = false
+		errStr := strings.ToLower(err.Error())
+		if strings.Contains(errStr, "expired") || strings.Contains(errStr, "exp") {
+			errorMsg = "Token has expired"
+		} else {
+			errorMsg = "Invalid token"
+		}
+	} else if token != nil {
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if ok {
+			// Check expiration
+			if exp, ok := claims["exp"].(float64); ok {
+				expTime := time.Unix(int64(exp), 0)
+				expiresAt = &expTime
+				isValid = time.Now().Before(expTime)
+			} else {
+				isValid = false
+				errorMsg = "Token missing expiration claim"
+			}
+		} else {
+			isValid = false
+			errorMsg = "Invalid token claims"
+		}
+	} else {
+		isValid = false
+		errorMsg = "Token parsing failed"
+	}
+
+	response.JSON(w, http.StatusOK, map[string]interface{}{
+		"valid":     isValid,
+		"expiresAt": expiresAt,
+		"error":     errorMsg,
+	})
+}
+

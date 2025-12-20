@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"devhive-backend/internal/config"
 	"devhive-backend/internal/http/middleware"
@@ -17,6 +18,11 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+// contains checks if a string contains a substring (case-insensitive)
+func contains(s, substr string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
 
 type MessageHandler struct {
 	queries *repo.Queries
@@ -390,24 +396,54 @@ var upgrader = websocket.Upgrader{
 
 // WebSocketHandler handles WebSocket connections for real-time messaging and cache invalidation
 func (h *MessageHandler) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
-	// Extract JWT token from Authorization header or query param
-	token := r.Header.Get("Authorization")
-	if len(token) > 7 && token[:7] == "Bearer " {
-		token = token[7:]
+	// Extract JWT token from multiple sources (in order of preference):
+	// 1. Authorization header (most secure)
+	// 2. Cookie (secure, httpOnly)
+	// 3. Query param (fallback, less secure - for debugging/backward compatibility)
+	var token string
+	
+	// Try Authorization header first
+	authHeader := r.Header.Get("Authorization")
+	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		token = authHeader[7:]
 	}
-	// Fallback to query param if header not present
+	
+	// Fallback to cookie if header not present
+	if token == "" {
+		cookie, err := r.Cookie("access_token")
+		if err == nil && cookie.Value != "" {
+			token = cookie.Value
+		}
+	}
+	
+	// Fallback to query param (for backward compatibility, but should be deprecated)
 	if token == "" {
 		token = r.URL.Query().Get("token")
+		if token != "" {
+			log.Printf("WARNING: WebSocket token provided via query parameter (less secure). Consider using Authorization header or cookie.")
+		}
 	}
 
 	if token == "" {
-		http.Error(w, "Missing authentication token", http.StatusUnauthorized)
+		http.Error(w, "Missing authentication token. Provide token via Authorization header, cookie, or query parameter.", http.StatusUnauthorized)
 		return
 	}
 
 	// Validate JWT token and extract user_id
 	userID, err := h.validateJWTToken(token)
 	if err != nil {
+		// Provide more specific error messages for expired tokens
+		errStr := err.Error()
+		if contains(errStr, "expired") || contains(errStr, "exp") {
+			log.Printf("JWT validation error: token has invalid claims: token is expired")
+			http.Error(w, "Authentication token has expired. Please refresh your token and reconnect.", http.StatusUnauthorized)
+			return
+		}
+		if contains(errStr, "malformed") || contains(errStr, "invalid") {
+			log.Printf("JWT validation error: malformed token")
+			http.Error(w, "Invalid authentication token format", http.StatusUnauthorized)
+			return
+		}
 		log.Printf("JWT validation error: %v", err)
 		http.Error(w, "Invalid authentication token", http.StatusUnauthorized)
 		return
@@ -531,6 +567,7 @@ func (h *MessageHandler) GetWebSocketStatus(w http.ResponseWriter, r *http.Reque
 }
 
 // validateJWTToken validates a JWT token and returns the user ID
+// Returns a more specific error if the token is expired
 func (h *MessageHandler) validateJWTToken(tokenString string) (string, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		// Validate signing method
@@ -540,8 +577,13 @@ func (h *MessageHandler) validateJWTToken(tokenString string) (string, error) {
 		return []byte(h.cfg.JWT.SigningKey), nil
 	})
 
-	if err != nil || !token.Valid {
+	if err != nil {
+		// Return the error as-is so we can check for ValidationErrorExpired
 		return "", err
+	}
+
+	if !token.Valid {
+		return "", jwt.ErrSignatureInvalid
 	}
 
 	// Extract claims
