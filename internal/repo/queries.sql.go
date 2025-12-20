@@ -69,6 +69,26 @@ func (q *Queries) CheckProjectOwner(ctx context.Context, arg CheckProjectOwnerPa
 	return is_owner, err
 }
 
+const checkProjectOwnerOrAdmin = `-- name: CheckProjectOwnerOrAdmin :one
+SELECT (
+    EXISTS(SELECT 1 FROM projects p WHERE p.id = $1 AND p.owner_id = $2) OR
+    EXISTS(SELECT 1 FROM project_members pm WHERE pm.project_id = $1 AND pm.user_id = $2 AND pm.role = 'admin')
+)::boolean as is_owner_or_admin
+`
+
+type CheckProjectOwnerOrAdminParams struct {
+	ID      uuid.UUID `json:"id"`
+	OwnerID uuid.UUID `json:"ownerId"`
+}
+
+// Check if user is project owner OR has admin role in project_members
+func (q *Queries) CheckProjectOwnerOrAdmin(ctx context.Context, arg CheckProjectOwnerOrAdminParams) (bool, error) {
+	row := q.db.QueryRow(ctx, checkProjectOwnerOrAdmin, arg.ID, arg.OwnerID)
+	var is_owner_or_admin bool
+	err := row.Scan(&is_owner_or_admin)
+	return is_owner_or_admin, err
+}
+
 const createMessage = `-- name: CreateMessage :one
 INSERT INTO messages (project_id, sender_id, content, message_type, parent_message_id)
 VALUES ($1, $2, $3, $4, $5)
