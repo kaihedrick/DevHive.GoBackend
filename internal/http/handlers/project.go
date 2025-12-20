@@ -852,15 +852,18 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add user as a member
+	log.Printf("AcceptInvite: Adding user %s to project %s", userUUID.String(), invite.ProjectID.String())
 	err = h.queries.AddProjectMember(r.Context(), repo.AddProjectMemberParams{
 		ProjectID: invite.ProjectID,
 		UserID:    userUUID,
 		Role:      "member",
 	})
 	if err != nil {
+		log.Printf("AcceptInvite: Failed to add member: %v", err)
 		response.BadRequest(w, "Failed to join project: "+err.Error())
 		return
 	}
+	log.Printf("AcceptInvite: Successfully added user %s to project %s (should trigger cache invalidation)", userUUID.String(), invite.ProjectID.String())
 
 	// Increment invite use count
 	err = h.queries.IncrementInviteUseCount(r.Context(), invite.ID)

@@ -184,11 +184,18 @@ class CacheInvalidationService {
         break;
 
       case 'project_members':
-        // Invalidate project members and project bundle
-        queryClient.invalidateQueries({ queryKey: ['projectMembers', project_id] });
-        queryClient.invalidateQueries({ queryKey: ['projects', 'bundle', project_id] });
-        // Also invalidate user's project list if they joined/left
+        // For member changes, immediately refetch active queries to update UI
+        queryClient.refetchQueries({ 
+          queryKey: ['projectMembers', project_id],
+          exact: false // Refetch all queries that start with this key
+        });
+        queryClient.refetchQueries({ 
+          queryKey: ['projects', 'bundle', project_id],
+          exact: false 
+        });
+        // Invalidate project list (will refetch when user navigates to it)
         queryClient.invalidateQueries({ queryKey: ['projects', 'list'] });
+        console.log(`✅ Refetched project members for project ${project_id}`);
         break;
 
       default:
