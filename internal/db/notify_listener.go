@@ -124,8 +124,14 @@ func (l *NotifyListener) handleNotification(notification *pgconn.Notification) {
 
 	// Validate payload has required fields
 	if payload.ProjectID == "" {
-		log.Printf("Notification missing project_id, skipping")
+		log.Printf("ERROR: Notification missing project_id, skipping. Full payload: %+v", payload)
 		return
+	}
+
+	// Special logging for project_members to help debug
+	if payload.Resource == "project_members" {
+		log.Printf("Project member notification: action=%s, project_id=%s, member_id=%s",
+			payload.Action, payload.ProjectID, payload.ID)
 	}
 
 	// Build message data

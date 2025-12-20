@@ -1,5 +1,5 @@
--- Create cache invalidation notification function
--- Uses single channel 'cache_invalidate' with JSON payload containing project_id
+-- Fix notification trigger to handle project_members table correctly
+-- project_members doesn't have an id column, so we use composite key (project_id:user_id)
 CREATE OR REPLACE FUNCTION notify_cache_invalidation()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -43,28 +43,4 @@ BEGIN
   RETURN COALESCE(NEW, OLD);
 END;
 $$ LANGUAGE plpgsql;
-
--- Create triggers for projects table
-DROP TRIGGER IF EXISTS projects_cache_invalidate ON projects;
-CREATE TRIGGER projects_cache_invalidate
-  AFTER INSERT OR UPDATE OR DELETE ON projects
-  FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidation();
-
--- Create triggers for sprints table
-DROP TRIGGER IF EXISTS sprints_cache_invalidate ON sprints;
-CREATE TRIGGER sprints_cache_invalidate
-  AFTER INSERT OR UPDATE OR DELETE ON sprints
-  FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidation();
-
--- Create triggers for tasks table
-DROP TRIGGER IF EXISTS tasks_cache_invalidate ON tasks;
-CREATE TRIGGER tasks_cache_invalidate
-  AFTER INSERT OR UPDATE OR DELETE ON tasks
-  FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidation();
-
--- Create triggers for project_members table
-DROP TRIGGER IF EXISTS project_members_cache_invalidate ON project_members;
-CREATE TRIGGER project_members_cache_invalidate
-  AFTER INSERT OR UPDATE OR DELETE ON project_members
-  FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidation();
 

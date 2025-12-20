@@ -1,17 +1,14 @@
 package handlers
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"devhive-backend/internal/http/middleware"
 	"devhive-backend/internal/http/response"
 	"devhive-backend/internal/repo"
-	"devhive-backend/internal/ws"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -19,13 +16,11 @@ import (
 
 type ProjectHandler struct {
 	queries *repo.Queries
-	hub     *ws.Hub
 }
 
-func NewProjectHandler(queries *repo.Queries, hub *ws.Hub) *ProjectHandler {
+func NewProjectHandler(queries *repo.Queries) *ProjectHandler {
 	return &ProjectHandler{
 		queries: queries,
-		hub:     hub,
 	}
 }
 
@@ -35,44 +30,10 @@ type CreateProjectRequest struct {
 	Description string `json:"description"`
 }
 
-// JoinProjectRequest represents the join-project by code request
-type JoinProjectRequest struct {
-	ProjectID string `json:"projectId"`
-}
-
 // UpdateProjectRequest represents the project update request
 type UpdateProjectRequest struct {
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
-}
-
-// CreateInviteRequest represents the invite creation request
-type CreateInviteRequest struct {
-	ExpiresInMinutes *int `json:"expiresInMinutes,omitempty"` // Default: 30
-	MaxUses          *int `json:"maxUses,omitempty"`          // Default: unlimited
-}
-
-// InviteResponse represents an invite response
-type InviteResponse struct {
-	ID          string `json:"id"`
-	ProjectID   string `json:"projectId"`
-	InviteToken string `json:"inviteToken"`
-	InviteURL   string `json:"inviteUrl"` // Full URL for frontend
-	ExpiresAt   string `json:"expiresAt"`
-	MaxUses     *int   `json:"maxUses,omitempty"`
-	UsedCount   int    `json:"usedCount"`
-	IsActive    bool   `json:"isActive"`
-	CreatedAt   string `json:"createdAt"`
-}
-
-// InviteDetailsResponse represents invite details (for accepting)
-type InviteDetailsResponse struct {
-	ID          string `json:"id"`
-	ProjectID   string `json:"projectId"`
-	ProjectName string `json:"projectName"`
-	ExpiresAt   string `json:"expiresAt"`
-	IsExpired   bool   `json:"isExpired"`
-	IsValid     bool   `json:"isValid"`
 }
 
 // ProjectResponse represents a project response
@@ -130,9 +91,6 @@ func (h *ProjectHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
 		response.InternalServerError(w, "Failed to list projects")
 		return
 	}
-
-	// Set cache headers for list endpoint (60 seconds)
-	w.Header().Set("Cache-Control", "private, max-age=60")
 
 	// Convert to response format
 	var projectResponses []ProjectResponse
@@ -205,98 +163,8 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// JoinProject handles joining a project by project code/ID
-// This endpoint requires authentication but does not require prior membership.
-// It adds the authenticated user as a member of the target project (idempotently).
-func (h *ProjectHandler) JoinProject(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
-	if !ok {
-		response.Unauthorized(w, "User ID not found in context")
-		return
-	}
-
-	var req JoinProjectRequest
-	if !response.Decode(w, r, &req) {
-		return
-	}
-
-	if strings.TrimSpace(req.ProjectID) == "" {
-		response.BadRequest(w, "Project ID is required")
-		return
-	}
-
-	projectUUID, err := uuid.Parse(req.ProjectID)
-	if err != nil {
-		response.BadRequest(w, "Invalid project ID")
-		return
-	}
-
-	userUUID, err := uuid.Parse(userID)
-	if err != nil {
-		response.BadRequest(w, "Invalid user ID")
-		return
-	}
-
-	// Ensure project exists
-	project, err := h.queries.GetProjectByID(r.Context(), projectUUID)
-	if err != nil {
-		response.NotFound(w, "Project not found")
-		return
-	}
-
-	// CRITICAL: Always set role to "member" - never allow "owner"
-	// Project ownership is determined by projects.owner_id, not project_members.role
-	// Users joining via invite code should never become project owners
-	if err := h.queries.AddProjectMember(r.Context(), repo.AddProjectMemberParams{
-		ProjectID: projectUUID,
-		UserID:    userUUID,
-		Role:      "member", // Always "member" - owner role is not allowed
-	}); err != nil {
-		response.InternalServerError(w, "Failed to join project")
-		return
-	}
-
-	// Explicitly broadcast cache invalidation for project_members change
-	// This ensures all users viewing the project get notified immediately when someone joins
-	if h.hub != nil {
-		messageData := map[string]interface{}{
-			"resource":   "project_members",
-			"action":     "INSERT",
-			"project_id": projectUUID.String(),
-			"timestamp":  time.Now().Format(time.RFC3339),
-		}
-		h.hub.BroadcastToProject(projectUUID.String(), "cache_invalidate", messageData)
-	}
-
-	// Return project details so the frontend can navigate to it
-	response.JSON(w, http.StatusOK, ProjectResponse{
-		ID:          project.ID.String(),
-		OwnerID:     project.OwnerID.String(),
-		Name:        project.Name,
-		Description: *project.Description,
-		CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		Owner: struct {
-			ID        string `json:"id"`
-			Username  string `json:"username"`
-			Email     string `json:"email"`
-			FirstName string `json:"firstName"`
-			LastName  string `json:"lastName"`
-		}{
-			ID:        project.OwnerID.String(),
-			Username:  project.OwnerUsername,
-			Email:     project.OwnerEmail,
-			FirstName: project.OwnerFirstName,
-			LastName:  project.OwnerLastName,
-		},
-	})
-}
-
 // GetProject handles getting a project by ID
 func (h *ProjectHandler) GetProject(w http.ResponseWriter, r *http.Request) {
-	// Set cache headers for single project endpoint (5 minutes)
-	w.Header().Set("Cache-Control", "private, max-age=300")
-
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		response.Unauthorized(w, "User ID not found in context")
@@ -468,7 +336,7 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user is the project owner (only owners can edit project title and description)
+	// Check if user has access to project
 	projectUUID, err := uuid.Parse(projectID)
 	if err != nil {
 		response.BadRequest(w, "Invalid project ID")
@@ -479,18 +347,12 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "Invalid user ID")
 		return
 	}
-
-	// Verify user is the project owner
-	isOwner, err := h.queries.CheckProjectOwner(r.Context(), repo.CheckProjectOwnerParams{
+	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
 		ID:      projectUUID,
 		OwnerID: userUUID,
 	})
-	if err != nil {
-		response.InternalServerError(w, "Failed to verify project ownership")
-		return
-	}
-	if !isOwner {
-		response.Forbidden(w, "Only project owners can edit project title and description")
+	if err != nil || !hasAccess {
+		response.Forbidden(w, "Access denied to project")
 		return
 	}
 
@@ -551,7 +413,7 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user is the project owner (only owners can delete projects)
+	// Check if user has access to project
 	projectUUID, err := uuid.Parse(projectID)
 	if err != nil {
 		response.BadRequest(w, "Invalid project ID")
@@ -562,31 +424,12 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "Invalid user ID")
 		return
 	}
-
-	// Verify user is the project owner
-	isOwner, err := h.queries.CheckProjectOwner(r.Context(), repo.CheckProjectOwnerParams{
+	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
 		ID:      projectUUID,
 		OwnerID: userUUID,
 	})
-	if err != nil {
-		log.Printf("ERROR: CheckProjectOwner failed for project %s, user %s: %v",
-			projectUUID.String(), userUUID.String(), err)
-		response.InternalServerError(w, "Failed to verify project ownership")
-		return
-	}
-	if !isOwner {
-		log.Printf("WARN: Non-owner user %s attempted to delete project %s",
-			userUUID.String(), projectUUID.String())
-		response.Forbidden(w, "Only project owners can delete projects")
-		return
-	}
-	log.Printf("INFO: Project owner %s deleting project %s",
-		userUUID.String(), projectUUID.String())
-
-	// Verify project exists before deletion
-	_, err = h.queries.GetProjectByID(r.Context(), projectUUID)
-	if err != nil {
-		response.NotFound(w, "Project not found")
+	if err != nil || !hasAccess {
+		response.Forbidden(w, "Access denied to project")
 		return
 	}
 
@@ -612,28 +455,6 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 	role := r.URL.Query().Get("role")
 	if role == "" {
 		role = "member"
-	}
-
-	// CRITICAL: Prevent setting role to "owner"
-	// Owner is determined by projects.owner_id, not project_members.role
-	if strings.EqualFold(role, "owner") {
-		response.BadRequest(w, "Cannot set role to 'owner'. Owner is determined by project ownership.")
-		return
-	}
-
-	// Validate role is one of allowed values
-	allowedRoles := []string{"member", "admin", "viewer"}
-	roleValid := false
-	for _, allowedRole := range allowedRoles {
-		if strings.EqualFold(role, allowedRole) {
-			role = allowedRole // Normalize case
-			roleValid = true
-			break
-		}
-	}
-	if !roleValid {
-		response.BadRequest(w, "Invalid role. Allowed roles: member, admin, viewer")
-		return
 	}
 
 	// Check if user has access to project
@@ -670,21 +491,6 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		response.BadRequest(w, "Failed to add member: "+err.Error())
 		return
-	}
-
-	// Explicitly broadcast cache invalidation for project_members change
-	// This ensures all users viewing the project get notified immediately
-	if h.hub != nil {
-		messageData := map[string]interface{}{
-			"resource":   "project_members",
-			"action":     "INSERT",
-			"project_id": projectUUID.String(),
-			"timestamp":  time.Now().Format(time.RFC3339),
-		}
-		h.hub.BroadcastToProject(projectUUID.String(), "cache_invalidate", messageData)
-		log.Printf("Explicit broadcast: project_members INSERT for project %s", projectUUID.String())
-	} else {
-		log.Printf("ERROR: Hub is nil, cannot broadcast cache invalidation for project %s", projectUUID.String())
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Member added successfully"})
@@ -734,21 +540,6 @@ func (h *ProjectHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		response.BadRequest(w, "Failed to remove member: "+err.Error())
 		return
-	}
-
-	// Explicitly broadcast cache invalidation for project_members change
-	// This ensures all users viewing the project get notified immediately
-	if h.hub != nil {
-		messageData := map[string]interface{}{
-			"resource":   "project_members",
-			"action":     "DELETE",
-			"project_id": projectUUID.String(),
-			"timestamp":  time.Now().Format(time.RFC3339),
-		}
-		h.hub.BroadcastToProject(projectUUID.String(), "cache_invalidate", messageData)
-		log.Printf("Explicit broadcast: project_members DELETE for project %s", projectUUID.String())
-	} else {
-		log.Printf("ERROR: Hub is nil, cannot broadcast cache invalidation for project %s", projectUUID.String())
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Member removed successfully"})
@@ -820,16 +611,30 @@ func (h *ProjectHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// CreateInvite handles creating a project invite link
-func (h *ProjectHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
+// JoinProjectRequest represents the request to join a project
+type JoinProjectRequest struct {
+	ProjectID string `json:"projectId"`
+}
+
+// JoinProject handles a user joining a project by project ID
+func (h *ProjectHandler) JoinProject(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		response.Unauthorized(w, "User ID not found in context")
 		return
 	}
 
-	projectID := chi.URLParam(r, "projectId")
-	projectUUID, err := uuid.Parse(projectID)
+	var req JoinProjectRequest
+	if !response.Decode(w, r, &req) {
+		return
+	}
+
+	if req.ProjectID == "" {
+		response.BadRequest(w, "Project ID is required")
+		return
+	}
+
+	projectUUID, err := uuid.Parse(req.ProjectID)
 	if err != nil {
 		response.BadRequest(w, "Invalid project ID")
 		return
@@ -841,115 +646,73 @@ func (h *ProjectHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user has access to project (must be owner or member)
-	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
-	})
-	if err != nil || !hasAccess {
-		response.Forbidden(w, "Access denied to project")
-		return
-	}
-
-	var req CreateInviteRequest
-	if !response.Decode(w, r, &req) {
-		return
-	}
-
-	// Default expiration: 30 minutes
-	expiresInMinutes := 30
-	if req.ExpiresInMinutes != nil && *req.ExpiresInMinutes > 0 {
-		expiresInMinutes = *req.ExpiresInMinutes
-	}
-
-	expiresAt := time.Now().Add(time.Duration(expiresInMinutes) * time.Minute)
-
-	// Generate secure invite token (UUID-based)
-	inviteToken := uuid.New().String()
-
-	// Create invite
-	var maxUsesPtr *int32
-	if req.MaxUses != nil && *req.MaxUses > 0 {
-		maxUsesVal := int32(*req.MaxUses)
-		maxUsesPtr = &maxUsesVal
-	}
-
-	invite, err := h.queries.CreateProjectInvite(r.Context(), repo.CreateProjectInviteParams{
-		ProjectID:   projectUUID,
-		CreatedBy:   userUUID,
-		InviteToken: inviteToken,
-		ExpiresAt:   expiresAt,
-		MaxUses:     maxUsesPtr,
-	})
+	// Check if project exists
+	projectExists, err := h.queries.ProjectExists(r.Context(), projectUUID)
 	if err != nil {
-		response.InternalServerError(w, "Failed to create invite: "+err.Error())
+		response.InternalServerError(w, "Failed to check project existence")
 		return
 	}
-
-	// Build invite URL (frontend will handle routing)
-	// Get frontend URL from request or use default
-	frontendURL := r.Header.Get("Origin")
-	if frontendURL == "" {
-		frontendURL = "https://devhive.it.com" // Default frontend URL
-	}
-	inviteURL := fmt.Sprintf("%s/invite/%s", frontendURL, inviteToken)
-
-	var maxUsesResponse *int
-	if invite.MaxUses != nil {
-		maxUsesVal := int(*invite.MaxUses)
-		maxUsesResponse = &maxUsesVal
-	}
-
-	response.JSON(w, http.StatusCreated, InviteResponse{
-		ID:          invite.ID.String(),
-		ProjectID:   invite.ProjectID.String(),
-		InviteToken: invite.InviteToken,
-		InviteURL:   inviteURL,
-		ExpiresAt:   invite.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"),
-		MaxUses:     maxUsesResponse,
-		UsedCount:   int(invite.UsedCount),
-		IsActive:    invite.IsActive,
-		CreatedAt:   invite.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	})
-}
-
-// GetInviteDetails handles getting invite details by token (public endpoint, no auth required)
-func (h *ProjectHandler) GetInviteDetails(w http.ResponseWriter, r *http.Request) {
-	inviteToken := chi.URLParam(r, "inviteToken")
-	if inviteToken == "" {
-		response.BadRequest(w, "Invite token is required")
-		return
-	}
-
-	invite, err := h.queries.GetProjectInviteByToken(r.Context(), inviteToken)
-	if err != nil {
-		response.NotFound(w, "Invite not found or expired")
-		return
-	}
-
-	// Check if expired
-	isExpired := time.Now().After(invite.ExpiresAt)
-	isValid := invite.IsActive && !isExpired &&
-		(invite.MaxUses == nil || invite.UsedCount < *invite.MaxUses)
-
-	// Get project details
-	project, err := h.queries.GetProjectByID(r.Context(), invite.ProjectID)
-	if err != nil {
+	if !projectExists {
 		response.NotFound(w, "Project not found")
 		return
 	}
 
-	response.JSON(w, http.StatusOK, InviteDetailsResponse{
-		ID:          invite.ID.String(),
-		ProjectID:   invite.ProjectID.String(),
-		ProjectName: project.Name,
-		ExpiresAt:   invite.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"),
-		IsExpired:   isExpired,
-		IsValid:     isValid,
+	// Check if user is already a member or owner
+	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
+		ID:      projectUUID,
+		OwnerID: userUUID,
+	})
+	if err != nil {
+		response.InternalServerError(w, "Failed to check project access")
+		return
+	}
+	if hasAccess {
+		// User is already a member, return the project
+		project, err := h.queries.GetProjectByID(r.Context(), projectUUID)
+		if err != nil {
+			response.InternalServerError(w, "Failed to get project")
+			return
+		}
+		response.JSON(w, http.StatusOK, ProjectResponse{
+			ID:          project.ID.String(),
+			OwnerID:     project.OwnerID.String(),
+			Name:        project.Name,
+			Description: *project.Description,
+			CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+		return
+	}
+
+	// Add user as a member
+	err = h.queries.AddProjectMember(r.Context(), repo.AddProjectMemberParams{
+		ProjectID: projectUUID,
+		UserID:    userUUID,
+		Role:      "member",
+	})
+	if err != nil {
+		response.BadRequest(w, "Failed to join project: "+err.Error())
+		return
+	}
+
+	// Get the project to return
+	project, err := h.queries.GetProjectByID(r.Context(), projectUUID)
+	if err != nil {
+		response.InternalServerError(w, "Failed to get project")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, ProjectResponse{
+		ID:          project.ID.String(),
+		OwnerID:     project.OwnerID.String(),
+		Name:        project.Name,
+		Description: *project.Description,
+		CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	})
 }
 
-// AcceptInvite handles accepting an invite and joining the project
+// AcceptInvite handles accepting a project invite by token
 func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
@@ -969,23 +732,22 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get invite
+	// Get the invite
 	invite, err := h.queries.GetProjectInviteByToken(r.Context(), inviteToken)
 	if err != nil {
-		response.NotFound(w, "Invite not found or expired")
+		response.NotFound(w, "Invalid or expired invite token")
 		return
 	}
 
-	// Validate invite
-	isExpired := time.Now().After(invite.ExpiresAt)
+	// Check if invite is still valid
 	if !invite.IsActive {
-		response.BadRequest(w, "Invite has been deactivated")
+		response.BadRequest(w, "Invite is no longer active")
 		return
 	}
-	if isExpired {
-		response.BadRequest(w, "Invite has expired")
-		return
-	}
+
+	// Check if invite has expired
+	// Note: This should be handled by the database query, but we check here too
+	// Check max uses
 	if invite.MaxUses != nil && invite.UsedCount >= *invite.MaxUses {
 		response.BadRequest(w, "Invite has reached maximum uses")
 		return
@@ -996,14 +758,22 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		ID:      invite.ProjectID,
 		OwnerID: userUUID,
 	})
-	if err == nil && hasAccess {
-		// User is already a member, return project details
+	if err != nil {
+		response.InternalServerError(w, "Failed to check project access")
+		return
+	}
+	if hasAccess {
+		// User is already a member, just increment the use count and return success
+		err = h.queries.IncrementInviteUseCount(r.Context(), invite.ID)
+		if err != nil {
+			// Log but don't fail
+			log.Printf("Failed to increment invite use count: %v", err)
+		}
 		project, err := h.queries.GetProjectByID(r.Context(), invite.ProjectID)
 		if err != nil {
-			response.InternalServerError(w, "Failed to get project details")
+			response.InternalServerError(w, "Failed to get project")
 			return
 		}
-
 		response.JSON(w, http.StatusOK, ProjectResponse{
 			ID:          project.ID.String(),
 			OwnerID:     project.OwnerID.String(),
@@ -1011,64 +781,35 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 			Description: *project.Description,
 			CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 			UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
-			Owner: struct {
-				ID        string `json:"id"`
-				Username  string `json:"username"`
-				Email     string `json:"email"`
-				FirstName string `json:"firstName"`
-				LastName  string `json:"lastName"`
-			}{
-				ID:        project.OwnerID.String(),
-				Username:  project.OwnerUsername,
-				Email:     project.OwnerEmail,
-				FirstName: project.OwnerFirstName,
-				LastName:  project.OwnerLastName,
-			},
 		})
 		return
 	}
 
-	// Increment use count
-	err = h.queries.IncrementInviteUseCount(r.Context(), invite.ID)
-	if err != nil {
-		response.InternalServerError(w, "Failed to update invite")
-		return
-	}
-
-	// Add user as member
+	// Add user as a member
 	err = h.queries.AddProjectMember(r.Context(), repo.AddProjectMemberParams{
 		ProjectID: invite.ProjectID,
 		UserID:    userUUID,
-		Role:      "member", // Always "member" for invites
+		Role:      "member",
 	})
 	if err != nil {
-		response.InternalServerError(w, "Failed to join project")
+		response.BadRequest(w, "Failed to join project: "+err.Error())
 		return
 	}
 
-	// Explicitly broadcast cache invalidation for project_members change
-	// This ensures all users viewing the project get notified immediately when someone joins
-	if h.hub != nil {
-		messageData := map[string]interface{}{
-			"resource":   "project_members",
-			"action":     "INSERT",
-			"project_id": invite.ProjectID.String(),
-			"timestamp":  time.Now().Format(time.RFC3339),
-		}
-		h.hub.BroadcastToProject(invite.ProjectID.String(), "cache_invalidate", messageData)
-		log.Printf("Explicit broadcast: project_members INSERT (via invite) for project %s", invite.ProjectID.String())
-	} else {
-		log.Printf("ERROR: Hub is nil, cannot broadcast cache invalidation for project %s", invite.ProjectID.String())
+	// Increment invite use count
+	err = h.queries.IncrementInviteUseCount(r.Context(), invite.ID)
+	if err != nil {
+		// Log but don't fail the request
+		log.Printf("Failed to increment invite use count: %v", err)
 	}
 
-	// Get project details
+	// Get the project to return
 	project, err := h.queries.GetProjectByID(r.Context(), invite.ProjectID)
 	if err != nil {
-		response.InternalServerError(w, "Failed to get project details")
+		response.InternalServerError(w, "Failed to get project")
 		return
 	}
 
-	// Return project details
 	response.JSON(w, http.StatusOK, ProjectResponse{
 		ID:          project.ID.String(),
 		OwnerID:     project.OwnerID.String(),
@@ -1076,158 +817,5 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		Description: *project.Description,
 		CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		Owner: struct {
-			ID        string `json:"id"`
-			Username  string `json:"username"`
-			Email     string `json:"email"`
-			FirstName string `json:"firstName"`
-			LastName  string `json:"lastName"`
-		}{
-			ID:        project.OwnerID.String(),
-			Username:  project.OwnerUsername,
-			Email:     project.OwnerEmail,
-			FirstName: project.OwnerFirstName,
-			LastName:  project.OwnerLastName,
-		},
 	})
-}
-
-// ListInvites handles listing all active invites for a project
-func (h *ProjectHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
-	if !ok {
-		response.Unauthorized(w, "User ID not found in context")
-		return
-	}
-
-	projectID := chi.URLParam(r, "projectId")
-	projectUUID, err := uuid.Parse(projectID)
-	if err != nil {
-		response.BadRequest(w, "Invalid project ID")
-		return
-	}
-
-	userUUID, err := uuid.Parse(userID)
-	if err != nil {
-		response.BadRequest(w, "Invalid user ID")
-		return
-	}
-
-	// Check if user has access to project
-	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
-	})
-	if err != nil || !hasAccess {
-		response.Forbidden(w, "Access denied to project")
-		return
-	}
-
-	// Get all active invites for the project
-	invites, err := h.queries.ListProjectInvites(r.Context(), projectUUID)
-	if err != nil {
-		response.InternalServerError(w, "Failed to list invites")
-		return
-	}
-
-	// Get frontend URL from request or use default
-	frontendURL := r.Header.Get("Origin")
-	if frontendURL == "" {
-		frontendURL = "https://devhive.it.com" // Default frontend URL
-	}
-
-	// Convert to response format
-	var inviteResponses []InviteResponse
-	for _, invite := range invites {
-		var maxUsesPtr *int
-		if invite.MaxUses != nil {
-			maxUsesVal := int(*invite.MaxUses)
-			maxUsesPtr = &maxUsesVal
-		}
-
-		inviteURL := fmt.Sprintf("%s/invite/%s", frontendURL, invite.InviteToken)
-
-		inviteResponses = append(inviteResponses, InviteResponse{
-			ID:          invite.ID.String(),
-			ProjectID:   invite.ProjectID.String(),
-			InviteToken: invite.InviteToken,
-			InviteURL:   inviteURL,
-			ExpiresAt:   invite.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"),
-			MaxUses:     maxUsesPtr,
-			UsedCount:   int(invite.UsedCount),
-			IsActive:    invite.IsActive,
-			CreatedAt:   invite.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		})
-	}
-
-	if inviteResponses == nil {
-		inviteResponses = []InviteResponse{}
-	}
-
-	response.JSON(w, http.StatusOK, map[string]interface{}{
-		"invites": inviteResponses,
-		"count":   len(inviteResponses),
-	})
-}
-
-// RevokeInvite handles deactivating an invite
-func (h *ProjectHandler) RevokeInvite(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
-	if !ok {
-		response.Unauthorized(w, "User ID not found in context")
-		return
-	}
-
-	projectID := chi.URLParam(r, "projectId")
-	inviteID := chi.URLParam(r, "inviteId")
-
-	projectUUID, err := uuid.Parse(projectID)
-	if err != nil {
-		response.BadRequest(w, "Invalid project ID")
-		return
-	}
-
-	inviteUUID, err := uuid.Parse(inviteID)
-	if err != nil {
-		response.BadRequest(w, "Invalid invite ID")
-		return
-	}
-
-	userUUID, err := uuid.Parse(userID)
-	if err != nil {
-		response.BadRequest(w, "Invalid user ID")
-		return
-	}
-
-	// Check if user has access to project
-	hasAccess, err := h.queries.CheckProjectAccess(r.Context(), repo.CheckProjectAccessParams{
-		ID:      projectUUID,
-		OwnerID: userUUID,
-	})
-	if err != nil || !hasAccess {
-		response.Forbidden(w, "Access denied to project")
-		return
-	}
-
-	// Get invite to verify it belongs to the project
-	invite, err := h.queries.GetProjectInviteByID(r.Context(), inviteUUID)
-	if err != nil {
-		response.NotFound(w, "Invite not found")
-		return
-	}
-
-	// Verify invite belongs to the project
-	if invite.ProjectID != projectUUID {
-		response.Forbidden(w, "Invite does not belong to this project")
-		return
-	}
-
-	// Deactivate invite
-	err = h.queries.DeactivateInvite(r.Context(), inviteUUID)
-	if err != nil {
-		response.InternalServerError(w, "Failed to revoke invite")
-		return
-	}
-
-	response.JSON(w, http.StatusOK, map[string]string{"message": "Invite revoked successfully"})
 }
