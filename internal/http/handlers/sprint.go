@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -127,6 +128,23 @@ func (h *SprintHandler) ListSprintsByProject(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		response.InternalServerError(w, "Failed to list sprints")
 		return
+	}
+
+	// Log sprint list query for debugging
+	log.Printf("📋 ListSprintsByProject: user_id=%s, project_id=%s, sprints_returned=%d, limit=%d, offset=%d",
+		userUUID.String(), projectUUID.String(), len(sprints), limit, offset)
+	if len(sprints) > 0 {
+		// Log status breakdown
+		activeCount := 0
+		inactiveCount := 0
+		for _, s := range sprints {
+			if s.IsStarted && !s.IsCompleted {
+				activeCount++
+			} else {
+				inactiveCount++
+			}
+		}
+		log.Printf("📋 Sprint status breakdown: active=%d, inactive/planned=%d", activeCount, inactiveCount)
 	}
 
 	// Convert to response format
