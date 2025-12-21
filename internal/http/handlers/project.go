@@ -178,9 +178,32 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		Role:      "owner",
 	})
 	if err != nil {
-		// Log error but don't fail the request - project was created successfully
-		// The owner can still access via projects.owner_id, but member queries will be inconsistent
-		log.Printf("Warning: Failed to add owner to project_members for project %s: %v", project.ID.String(), err)
+		// This is critical - fail the request if we can't add owner to project_members
+		// Without this, the owner won't be able to access invites or other member-based features
+		log.Printf("ERROR: Failed to add owner to project_members for project %s: %v", project.ID.String(), err)
+		response.InternalServerError(w, "Failed to initialize project membership")
+		return
+	}
+
+	// Get user's role and permissions for the response
+	userRole, permissions := h.getUserRoleAndPermissions(r.Context(), project.ID, userUUID)
+
+	// Get owner details for response
+	owner, err := h.queries.GetUserByID(r.Context(), userUUID)
+	if err != nil {
+		log.Printf("Warning: Failed to get owner details: %v", err)
+		// Return response without owner details if lookup fails
+		response.JSON(w, http.StatusCreated, ProjectResponse{
+			ID:          project.ID.String(),
+			OwnerID:     project.OwnerID.String(),
+			Name:        project.Name,
+			Description: *project.Description,
+			CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UserRole:    userRole,
+			Permissions: permissions,
+		})
+		return
 	}
 
 	response.JSON(w, http.StatusCreated, ProjectResponse{
@@ -190,6 +213,21 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		Description: *project.Description,
 		CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		Owner: struct {
+			ID        string `json:"id"`
+			Username  string `json:"username"`
+			Email     string `json:"email"`
+			FirstName string `json:"firstName"`
+			LastName  string `json:"lastName"`
+		}{
+			ID:        owner.ID.String(),
+			Username:  owner.Username,
+			Email:     owner.Email,
+			FirstName: owner.FirstName,
+			LastName:  owner.LastName,
+		},
+		UserRole:    userRole,
+		Permissions: permissions,
 	})
 }
 
@@ -1261,10 +1299,11 @@ func (h *ProjectHandler) getUserRoleAndPermissions(ctx context.Context, projectI
 			permissions.CanRevokeInvites = true
 			permissions.CanManageMembers = true
 		} else {
-			// member or viewer - no invite permissions
-			permissions.CanViewInvites = false
-			permissions.CanCreateInvites = false
-			permissions.CanRevokeInvites = false
+			// member or viewer - can view invites but cannot create/revoke
+			// Note: ListInvites handler allows all members to view invites
+			permissions.CanViewInvites = true  // All members can view invites
+			permissions.CanCreateInvites = false // Only owners/admins can create
+			permissions.CanRevokeInvites = false // Only owners/admins can revoke
 			permissions.CanManageMembers = false
 		}
 	}

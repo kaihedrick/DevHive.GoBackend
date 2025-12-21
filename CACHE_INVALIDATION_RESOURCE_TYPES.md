@@ -4,12 +4,12 @@
 
 The backend normalizes database table names to singular resource names for frontend consistency:
 
-| Database Table | Resource Name (Sent to Frontend) |
-|---------------|-----------------------------------|
-| `projects` | `project` |
-| `sprints` | `sprint` |
-| `tasks` | `task` |
-| `project_members` | `project_members` (kept plural) |
+| Database Table | Resource Name (Sent to Frontend) | Frontend Case Statement |
+|---------------|-----------------------------------|-------------------------|
+| `projects` | `project` | `case 'project':` |
+| `sprints` | `sprint` | `case 'sprint':` |
+| `tasks` | `task` | `case 'task':` |
+| `project_members` | `project_members` (kept plural) | `case 'project_members':` |
 
 ## Frontend Handling
 
@@ -19,24 +19,42 @@ Your frontend should handle these resource types in the cache invalidation switc
 switch (resource) {
   case 'project':
     // Handle project changes
+    if (id) {
+      queryClient.invalidateQueries({ queryKey: ['projects', id] });
+    }
+    queryClient.invalidateQueries({ queryKey: ['projects', 'list'] });
     break;
   
   case 'sprint':
     // Handle sprint changes
+    if (id) {
+      queryClient.invalidateQueries({ queryKey: ['sprints', id] });
+    }
+    queryClient.invalidateQueries({ queryKey: ['sprints', 'list', project_id] });
     break;
   
   case 'task':
     // Handle task changes
+    if (id) {
+      queryClient.invalidateQueries({ queryKey: ['tasks', id] });
+    }
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'list', project_id] });
     break;
   
   case 'project_members':
-    // Handle member changes
+    // Handle member changes (immediately refetch for real-time updates)
+    queryClient.refetchQueries({ 
+      queryKey: ['projectMembers', project_id],
+      exact: false 
+    });
     break;
   
   default:
     console.warn('Unknown resource type for cache invalidation:', resource);
 }
 ```
+
+**See `CACHE_INVALIDATION_PAYLOAD_REFERENCE.md` for complete payload examples and implementation guide.**
 
 ## Migration Status
 

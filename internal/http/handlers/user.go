@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"devhive-backend/internal/http/middleware"
 	"devhive-backend/internal/http/response"
@@ -51,6 +52,20 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate email format (strict validation for final submission)
+	email := strings.TrimSpace(strings.ToLower(req.Email))
+	if !isValidEmail(email) {
+		response.BadRequest(w, "Invalid email format")
+		return
+	}
+
+	// Validate username format (strict validation)
+	username := strings.TrimSpace(strings.ToLower(req.Username))
+	if !isValidUsername(username) {
+		response.BadRequest(w, "Invalid username format. Username must be 3-30 characters, alphanumeric with underscores or hyphens, and start/end with alphanumeric")
+		return
+	}
+
 	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -58,10 +73,10 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create user
+	// Create user (use validated/normalized email and username)
 	user, err := h.queries.CreateUser(r.Context(), repo.CreateUserParams{
-		Username:  req.Username,
-		Email:     req.Email,
+		Username:  username,
+		Email:     email,
 		PasswordH: string(hashedPassword),
 		FirstName: req.FirstName,
 		LastName:  req.LastName,
