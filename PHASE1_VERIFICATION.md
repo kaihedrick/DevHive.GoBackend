@@ -3,27 +3,49 @@
 ## ✅ 1.1 Refresh Cookie Correctness
 
 ### HttpOnly
-✅ **VERIFIED** - Lines 135, 229, 340
+✅ **VERIFIED** - Lines 135, 230, 341, 786
 ```go
 HttpOnly: true
 ```
 
 ### Secure
-✅ **VERIFIED** - Lines 136, 230, 341
+✅ **VERIFIED** - Lines 136, 231, 342, 787
 ```go
 Secure: true, // Always true in production (HTTPS required for SameSite=None)
 ```
 
 ### SameSite=None
-✅ **VERIFIED** - Lines 137, 231, 342
+✅ **VERIFIED** - Lines 137, 232, 343, 788
 ```go
 SameSite: http.SameSiteNoneMode, // NoneMode required for cross-origin requests
 ```
 
 ### Path=/
-✅ **VERIFIED** - Lines 133, 227, 338
+✅ **VERIFIED** - Lines 133, 227, 338, 784
 ```go
 Path: "/"
+```
+
+### Domain (Omitted for Safari Compatibility)
+✅ **VERIFIED** - All cookie locations omit Domain attribute
+
+**All cookie settings correctly OMIT the Domain attribute**, which makes cookies "host-only" and ensures Safari compatibility:
+- Cookie becomes host-only (tied to the API origin that set it)
+- Safari preserves cookies correctly
+- Safari sends cookies on `/auth/refresh` requests
+
+**Example cookie structure (all locations):**
+```go
+http.SetCookie(w, &http.Cookie{
+    Name:     "refresh_token",
+    Value:    refreshToken,
+    Path:     "/",                    // ✅ Set
+    MaxAge:   cookieMaxAge,           // ✅ Set (never 0)
+    HttpOnly: true,                   // ✅ Set
+    Secure:   true,                   // ✅ Set
+    SameSite: http.SameSiteNoneMode,  // ✅ Set
+    // Domain: OMITTED                // ✅ Correct - NOT set
+})
 ```
 
 ### Support Both Session + Persistent Lifetimes (Remember Me)
