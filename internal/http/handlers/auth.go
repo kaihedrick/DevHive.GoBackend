@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -579,6 +580,16 @@ type GoogleUserInfo struct {
 
 // GoogleLogin initiates the Google OAuth flow
 func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
+	// Validate Google OAuth configuration
+	if h.cfg.GoogleOAuth.ClientID == "" {
+		response.BadRequest(w, "Google OAuth is not configured. Please set GOOGLE_CLIENT_ID environment variable.")
+		return
+	}
+	if h.cfg.GoogleOAuth.ClientSecret == "" {
+		response.BadRequest(w, "Google OAuth is not configured. Please set GOOGLE_CLIENT_SECRET environment variable.")
+		return
+	}
+
 	// Parse query parameters
 	rememberMeStr := r.URL.Query().Get("remember_me")
 	redirectURL := r.URL.Query().Get("redirect")
@@ -621,6 +632,12 @@ func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 
 // GoogleCallback handles the OAuth callback from Google
 func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
+	// Validate Google OAuth configuration
+	if h.cfg.GoogleOAuth.ClientID == "" || h.cfg.GoogleOAuth.ClientSecret == "" {
+		response.BadRequest(w, "Google OAuth is not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.")
+		return
+	}
+
 	// Get authorization code and state from query parameters
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
@@ -773,8 +790,17 @@ func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 	// Delete state token from database
 	_ = h.queries.DeleteOAuthState(r.Context(), state)
 
-	// Return access token and user info
-	response.JSON(w, http.StatusOK, map[string]interface{}{
+	// Determine frontend redirect URL
+	var frontendRedirectURL string
+	if stateRecord.RedirectUrl != nil && *stateRecord.RedirectUrl != "" {
+		frontendRedirectURL = *stateRecord.RedirectUrl
+	} else {
+		frontendRedirectURL = "https://devhive.it.com/dashboard"
+	}
+
+	// Build redirect URL with token in fragment (more secure - fragments aren't sent to server)
+	// URL encode the token data as JSON for frontend to parse
+	tokenData := map[string]interface{}{
 		"token":     accessToken,
 		"userId":    userID.String(),
 		"isNewUser": isNewUser,
@@ -785,7 +811,19 @@ func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 			"lastName":       userInfo.FamilyName,
 			"profilePicture": userInfo.Picture,
 		},
-	})
+	}
+
+	// Convert to JSON and base64 encode for URL safety
+	tokenJSON, err := json.Marshal(tokenData)
+	if err != nil {
+		response.InternalServerError(w, "Failed to encode token data")
+		return
+	}
+	tokenEncoded := base64.URLEncoding.EncodeToString(tokenJSON)
+
+	// Redirect to frontend with token in fragment
+	redirectWithToken := frontendRedirectURL + "#token=" + tokenEncoded
+	http.Redirect(w, r, redirectWithToken, http.StatusFound)
 }
 
 // fetchGoogleUserInfo fetches user information from Google using the access token

@@ -349,6 +349,8 @@ fly logs
 | `/health` | GET | Health check |
 | `/api/v1/auth/login` | POST | User login |
 | `/api/v1/auth/refresh` | POST | Refresh access token |
+| `/api/v1/auth/google/login` | GET | Initiate Google OAuth flow |
+| `/api/v1/auth/google/callback` | GET | Google OAuth callback |
 | `/api/v1/users` | POST | Register user |
 | `/api/v1/projects` | GET | List projects |
 | `/api/v1/projects/{id}` | GET | Get project details |
@@ -389,8 +391,14 @@ If you have suggestions for improving the documentation structure or content:
 
 ---
 
-**Last Updated:** 2025-12-22
+**Last Updated:** 2025-12-23
 
-**Documentation Version:** 1.0
+**Documentation Version:** 1.3
 
 **Maintained by:** DevHive Team
+
+**Recent Updates:**
+- Added Google OAuth configuration documentation (environment variables, validation)
+- Updated authentication flow to document configuration requirements and error handling
+- Updated production Google OAuth redirect URL to `https://devhive-go-backend.fly.dev/api/v1/auth/google/callback`
+- Updated Google OAuth callback to redirect to frontend with token in URL fragment (redirects to `https://devhive.it.com/dashboard`)

@@ -253,6 +253,8 @@ The frontend automatically refreshes tokens on 401 responses using axios interce
 All endpoints except:
 - `/api/v1/auth/login`
 - `/api/v1/auth/refresh`
+- `/api/v1/auth/google/login` (OAuth initiation)
+- `/api/v1/auth/google/callback` (OAuth callback)
 - `/api/v1/auth/password/reset-request`
 - `/api/v1/auth/password/reset`
 - `/api/v1/users` (POST only - registration)
@@ -578,17 +580,20 @@ const projects = await apiClient.get('/projects');
 - `redirect` (optional): Frontend URL to redirect to after successful authentication
 
 **Process:**
-1. **Generate State Token:**
+1. **Validate Configuration:**
+   - Verify `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set
+   - Return 400 error with clear message if missing (prevents "Missing required parameter: client_id" errors)
+2. **Generate State Token:**
    - Random 32-character hex string for CSRF protection
-2. **Store State:**
+3. **Store State:**
    - Insert into `oauth_state` table with `remember_me` preference
    - 10-minute expiration
-3. **Build Google OAuth URL:**
-   - Client ID and secret from config
+4. **Build Google OAuth URL:**
+   - Client ID and secret from config (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`)
    - Scopes: `openid`, `profile`, `email`
-   - Redirect URL: `/api/v1/auth/google/callback`
+   - Redirect URL from config (`GOOGLE_REDIRECT_URL`, default: `/api/v1/auth/google/callback`)
    - State parameter for CSRF protection
-4. **Response:**
+5. **Response:**
    - Return authorization URL and state token
 
 **Response:**
@@ -615,42 +620,56 @@ const projects = await apiClient.get('/projects');
 - `state`: CSRF token to validate request
 
 **Process:**
-1. **Validate State Token:**
+1. **Validate Configuration:**
+   - Verify `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set
+   - Return 400 error with clear message if missing
+2. **Validate State Token:**
    - Query `oauth_state` WHERE `state_token = $1 AND expires_at > now()`
    - Return 400 if invalid or expired (CSRF protection)
-2. **Retrieve Remember Me Preference:**
+3. **Retrieve Remember Me Preference:**
    - Get `remember_me` from state record
-3. **Exchange Code for Tokens:**
+4. **Exchange Code for Tokens:**
    - Call Google OAuth token endpoint with authorization code
    - Receive Google access token, refresh token (if offline access), expiry
-4. **Fetch User Info:**
+5. **Fetch User Info:**
    - Call `https://www.googleapis.com/oauth2/v3/userinfo` with access token
    - Receive: sub (Google ID), email, name, given_name, family_name, picture
-5. **Find or Create User:**
+6. **Find or Create User:**
    - Query `users` WHERE `google_id = $1`
    - **If user exists:** Update profile picture if changed
    - **If user doesn't exist:**
      - Generate username from email (e.g., `john.doe_a1b2`)
      - Create user with `auth_provider='google'`, `password_h=NULL`
      - Store Google ID and profile picture
-6. **Generate DevHive Tokens:**
+7. **Generate DevHive Tokens:**
    - Create access token (15-minute expiry)
    - Create refresh token with appropriate expiry:
      - If `remember_me=true`: 30 days, `is_persistent=true`
      - If `remember_me=false`: 7 days (DB), session cookie (MaxAge=0)
-7. **Store Refresh Token:**
+8. **Store Refresh Token:**
    - Insert into `refresh_tokens` with Google tokens:
      - `google_refresh_token` (for re-auth with Google)
      - `google_access_token` (cached for Google API calls)
      - `google_token_expiry`
-8. **Set Cookie:**
+9. **Set Cookie:**
    - HttpOnly cookie with appropriate MaxAge
-9. **Cleanup:**
-   - Delete state token from `oauth_state`
-10. **Response:**
-    - Return access token and user info
+10. **Cleanup:**
+    - Delete state token from `oauth_state`
+11. **Redirect to Frontend:**
+    - Determine frontend redirect URL:
+      - Use `redirect_url` from `oauth_state` table if provided
+      - Default to `https://devhive.it.com/dashboard` if not provided
+    - Encode token data as base64 JSON (includes token, userId, isNewUser, user info)
+    - Redirect to: `{frontend_url}#token={base64-encoded-json}`
+    - Token data in URL fragment (secure - fragments aren't sent to server)
 
-**Response:**
+**Redirect Behavior:**
+The backend redirects to the frontend with token data in the URL fragment (after `#`). The redirect URL format is:
+```
+https://devhive.it.com/dashboard#token={base64-encoded-json}
+```
+
+The token data contains:
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
@@ -666,9 +685,41 @@ const projects = await apiClient.get('/projects');
 }
 ```
 
+**Frontend Handling:**
+The frontend must extract the token from the URL fragment on the dashboard/redirect page:
+1. Read `window.location.hash` to get the token data
+2. Decode base64 and parse JSON
+3. Store access token in memory/state
+4. Clear the hash from URL for clean UX
+5. Handle new user onboarding if `isNewUser: true`
+
 **Implementation:** `internal/http/handlers/auth.go:GoogleCallback()`
 
 ---
+
+### Google OAuth Configuration
+
+**Required Environment Variables:**
+- `GOOGLE_CLIENT_ID` - Google OAuth 2.0 client ID from Google Cloud Console (required)
+- `GOOGLE_CLIENT_SECRET` - Google OAuth 2.0 client secret from Google Cloud Console (required)
+- `GOOGLE_REDIRECT_URL` - OAuth callback URL (default: `http://localhost:8080/api/v1/auth/google/callback`)
+
+**Configuration Validation:**
+- Both handlers (`GoogleLogin` and `GoogleCallback`) validate that `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set before processing
+- Returns 400 Bad Request with clear error message if configuration is missing
+- Prevents "Missing required parameter: client_id" errors from Google's OAuth endpoint
+
+**Setup Steps:**
+1. Create OAuth 2.0 credentials in [Google Cloud Console](https://console.cloud.google.com)
+2. Set application type to "Web application"
+3. Configure authorized redirect URIs (must match `GOOGLE_REDIRECT_URL`):
+   - **Development**: `http://localhost:8080/api/v1/auth/google/callback`
+   - **Production**: `https://devhive-go-backend.fly.dev/api/v1/auth/google/callback`
+4. Copy Client ID and Client Secret to `.env` file (local) or Fly.io secrets (production)
+5. Set `GOOGLE_REDIRECT_URL` environment variable:
+   - Local: Add to `.env` file
+   - Production: Set as Fly.io secret: `fly secrets set GOOGLE_REDIRECT_URL="https://devhive-go-backend.fly.dev/api/v1/auth/google/callback"`
+6. Restart server to load configuration
 
 ### Google OAuth Security
 

@@ -195,7 +195,12 @@ Add to `.env` and `internal/config/config.go`:
 # Google OAuth Configuration
 GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
 GOOGLE_CLIENT_SECRET="your-client-secret"
-GOOGLE_REDIRECT_URL="https://api.devhive.it.com/api/v1/auth/google/callback"
+
+# Development (local)
+GOOGLE_REDIRECT_URL="http://localhost:8080/api/v1/auth/google/callback"
+
+# Production (Fly.io)
+# Set via: fly secrets set GOOGLE_REDIRECT_URL="https://devhive-go-backend.fly.dev/api/v1/auth/google/callback"
 
 # Updated Refresh Token Settings
 JWT_REFRESH_EXPIRATION_PERSISTENT_DAYS=30  # For "Remember Me" = true
@@ -275,10 +280,19 @@ GET /api/v1/auth/google/callback?code={auth_code}&state={state_token}
 - `state`: CSRF token to validate request
 
 **Response:**
+HTTP 302 Redirect to frontend with token data in URL fragment.
+
+The backend redirects to the frontend URL (default: `https://devhive.it.com/dashboard`) with token data encoded in the URL fragment:
+```
+https://devhive.it.com/dashboard#token={base64-encoded-json}
+```
+
+The encoded JSON contains:
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "userId": "uuid-here",
+  "isNewUser": true,
   "user": {
     "id": "uuid",
     "email": "user@gmail.com",
@@ -288,6 +302,9 @@ GET /api/v1/auth/google/callback?code={auth_code}&state={state_token}
   }
 }
 ```
+
+**Frontend Handling:**
+The frontend must extract the token from `window.location.hash` on the redirect page and process it accordingly.
 
 **Process:**
 1. Validate state token (CSRF protection)
@@ -306,7 +323,19 @@ GET /api/v1/auth/google/callback?code={auth_code}&state={state_token}
    - Persistent: `MaxAge = 30 days in seconds`
    - Session: `MaxAge = 0` (session cookie)
 10. Delete state token from `oauth_state`
-11. Redirect to frontend with access token or return JSON
+11. **Redirect to Frontend:**
+    - Determine redirect URL: use `redirect_url` from `oauth_state` if provided, otherwise default to `https://devhive.it.com/dashboard`
+    - Encode token data (token, userId, isNewUser, user) as base64 JSON
+    - Redirect to: `{frontend_url}#token={base64-encoded-json}`
+    - Token data is in URL fragment (secure - fragments aren't sent to server)
+
+**Redirect Response:**
+The backend redirects to the frontend with token data in the URL fragment:
+```
+https://devhive.it.com/dashboard#token={base64-encoded-json}
+```
+
+The frontend must extract and handle the token from the URL fragment on page load.
 
 **Implementation:** `internal/http/handlers/auth.go:GoogleCallback()`
 
@@ -393,38 +422,53 @@ const login = async (username: string, password: string, rememberMe: boolean) =>
 #### Google OAuth Login
 ```typescript
 const loginWithGoogle = async (rememberMe: boolean) => {
-  // 1. Get authorization URL
+  // 1. Get authorization URL (optional: specify frontend redirect URL)
   const response = await apiClient.get('/auth/google/login', {
     params: {
       remember_me: rememberMe,
-      redirect: window.location.origin + '/auth/callback'
+      redirect: 'https://devhive.it.com/dashboard' // Optional: defaults to devhive.it.com/dashboard
     }
   });
 
-  // 2. Redirect to Google
+  // 2. Redirect to Google (backend will redirect back to frontend after auth)
   window.location.href = response.data.authUrl;
 };
 
-// Callback handler (runs on /auth/callback route)
-const handleGoogleCallback = async () => {
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get('code');
-  const state = params.get('state');
-
-  if (!code || !state) {
-    throw new Error('Invalid OAuth callback');
+// Handle OAuth callback on dashboard/redirect page
+// Backend redirects to frontend with token in URL fragment
+const handleGoogleOAuthCallback = () => {
+  const hash = window.location.hash;
+  
+  if (hash.startsWith('#token=')) {
+    try {
+      // Extract and decode token data
+      const tokenDataEncoded = hash.substring(7); // Remove '#token='
+      const tokenDataJSON = atob(tokenDataEncoded); // Decode base64
+      const tokenData = JSON.parse(tokenDataJSON);
+      
+      // Store the access token
+      tokenManager.setAccessToken(tokenData.token);
+      
+      // Handle new user onboarding if needed
+      if (tokenData.isNewUser) {
+        // Show welcome message, profile completion, etc.
+        console.log('Welcome new user!', tokenData.user);
+      }
+      
+      // Clear the hash from URL for clean UX
+      window.history.replaceState(null, '', window.location.pathname);
+    } catch (error) {
+      console.error('Failed to parse OAuth token data:', error);
+      // Redirect to login on error
+      window.location.href = '/login';
+    }
   }
-
-  // Backend will handle code exchange and return tokens
-  const response = await apiClient.get('/auth/google/callback', {
-    params: { code, state }
-  });
-
-  tokenManager.setAccessToken(response.data.token);
-
-  // Redirect to dashboard
-  window.location.href = '/dashboard';
 };
+
+// Call this on dashboard page mount
+useEffect(() => {
+  handleGoogleOAuthCallback();
+}, []);
 ```
 
 ### 2. Login UI Component
@@ -696,7 +740,7 @@ Request minimal scopes from Google:
    http://localhost:8080/api/v1/auth/google/callback
 
    Production:
-   https://api.devhive.it.com/api/v1/auth/google/callback
+   https://devhive-go-backend.fly.dev/api/v1/auth/google/callback
    ```
 
 5. **Configure Authorized JavaScript Origins:**

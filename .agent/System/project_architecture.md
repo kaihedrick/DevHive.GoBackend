@@ -179,13 +179,14 @@ Configuration is loaded from environment variables with fallback defaults (see `
 
 ```go
 type Config struct {
-    Port          string           // HTTP port (default: 8080)
-    GRPCPort      string           // gRPC port (default: 8081)
-    DatabaseURL   string           // PostgreSQL connection string
-    JWT           JWTConfig        // JWT signing key, expiration
-    CORS          CORSConfig       // Allowed origins, credentials
-    Mail          MailConfig       // Mailgun API key, domain, sender
-    AdminPassword string           // Admin verification password
+    Port          string             // HTTP port (default: 8080)
+    GRPCPort      string             // gRPC port (default: 8081)
+    DatabaseURL   string             // PostgreSQL connection string
+    JWT           JWTConfig          // JWT signing key, expiration
+    CORS          CORSConfig         // Allowed origins, credentials
+    Mail          MailConfig         // Mailgun API key, domain, sender
+    GoogleOAuth   GoogleOAuthConfig  // Google OAuth 2.0 configuration
+    AdminPassword string             // Admin verification password
 }
 ```
 
@@ -194,9 +195,16 @@ type Config struct {
 - `JWT_SIGNING_KEY` - Secret for JWT token signing
 - `JWT_EXPIRATION_MINUTES` - Access token lifetime (default: 15)
 - `JWT_REFRESH_EXPIRATION_DAYS` - Refresh token lifetime (default: 7)
+- `JWT_REFRESH_EXPIRATION_PERSISTENT_DAYS` - Persistent refresh token lifetime for "Remember Me" (default: 30)
+- `JWT_REFRESH_EXPIRATION_SESSION_HOURS` - Session refresh token lifetime (default: 0 = browser session)
 - `CORS_ORIGINS` - Comma-separated allowed origins
 - `ADMIN_CERTIFICATES_PASSWORD` - Admin verification password
 - `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `MAILGUN_SENDER` - Email config
+- `GOOGLE_CLIENT_ID` - Google OAuth 2.0 client ID (required for Google OAuth)
+- `GOOGLE_CLIENT_SECRET` - Google OAuth 2.0 client secret (required for Google OAuth)
+- `GOOGLE_REDIRECT_URL` - OAuth callback URL
+  - Default (local): `http://localhost:8080/api/v1/auth/google/callback`
+  - Production: `https://devhive-go-backend.fly.dev/api/v1/auth/google/callback` (set via Fly.io secrets)
 
 ## Database Design Principles
 
@@ -235,7 +243,7 @@ type Config struct {
 - `GET /api/v1/projects/{projectId}/messages` - List project messages
 
 ### Authentication
-- **Public endpoints**: `/auth/login`, `/auth/refresh`, `/users` (POST), `/invites/{token}` (GET)
+- **Public endpoints**: `/auth/login`, `/auth/refresh`, `/auth/google/login`, `/auth/google/callback`, `/users` (POST), `/invites/{token}` (GET)
 - **Protected endpoints**: All others require `Authorization: Bearer <token>` header
 - **Token refresh**: Automatic retry with refresh token on 401 responses (see frontend apiClient.ts)
 
