@@ -108,10 +108,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		refreshExpiresAt = time.Now().Add(h.cfg.JWT.RefreshTokenPersistentExpiration)
 		cookieMaxAge = int(h.cfg.JWT.RefreshTokenPersistentExpiration.Seconds())
 	} else {
-		// Session-only: cookie expires when browser closes (MaxAge = 0)
-		// But store in DB with 7-day expiry as backup
+		// Non-persistent login: 7 days
+		// NOTE: Safari requires Max-Age to be set (not session cookie) to preserve cookies across app closes
 		refreshExpiresAt = time.Now().Add(h.cfg.JWT.RefreshTokenExpiration)
-		cookieMaxAge = 0 // Session cookie
+		cookieMaxAge = int(h.cfg.JWT.RefreshTokenExpiration.Seconds()) // Use 7-day expiry for cookie MaxAge
 	}
 
 	// Store refresh token in database
@@ -201,9 +201,10 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		newRefreshExpiresAt = time.Now().Add(h.cfg.JWT.RefreshTokenPersistentExpiration)
 		cookieMaxAge = int(h.cfg.JWT.RefreshTokenPersistentExpiration.Seconds())
 	} else {
-		// Session-only: keep session cookie behavior
+		// Non-persistent login: 7 days
+		// NOTE: Safari requires Max-Age to be set (not session cookie) to preserve cookies across app closes
 		newRefreshExpiresAt = time.Now().Add(h.cfg.JWT.RefreshTokenExpiration)
-		cookieMaxAge = 0 // Session cookie
+		cookieMaxAge = int(h.cfg.JWT.RefreshTokenExpiration.Seconds()) // Use 7-day expiry for cookie MaxAge
 	}
 
 	// Delete old refresh token and create new one
@@ -741,10 +742,10 @@ func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		refreshExpiresAt = time.Now().Add(h.cfg.JWT.RefreshTokenPersistentExpiration)
 		cookieMaxAge = int(h.cfg.JWT.RefreshTokenPersistentExpiration.Seconds())
 	} else {
-		// Session-only: cookie expires when browser closes (MaxAge = 0)
-		// But store in DB with 7-day expiry as backup
-		refreshExpiresAt = time.Now().Add(7 * 24 * time.Hour)
-		cookieMaxAge = 0 // Session cookie
+		// Non-persistent login: 7 days
+		// NOTE: Safari requires Max-Age to be set (not session cookie) to preserve cookies across app closes
+		refreshExpiresAt = time.Now().Add(h.cfg.JWT.RefreshTokenExpiration)
+		cookieMaxAge = int(h.cfg.JWT.RefreshTokenExpiration.Seconds()) // Use 7-day expiry for cookie MaxAge
 	}
 
 	// Store refresh token with Google tokens

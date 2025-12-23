@@ -126,10 +126,20 @@ apiClient.interceptors.response.use(
           { withCredentials: true } // Send refresh token cookie
         );
 
+        // Backend returns: { token: "...", userId: "..." }
         const { token } = response.data;
         
-        // Store new access token
+        if (!token) {
+          throw new Error('Refresh response missing token');
+        }
+        
+        // Store new access token (both in-memory and localStorage)
         setAccessToken(token);
+        
+        // Store userId if provided
+        if (response.data.userId) {
+          localStorage.setItem(USER_ID_KEY, response.data.userId);
+        }
         
         // Process queued requests
         processQueue(null, token);
@@ -140,8 +150,16 @@ apiClient.interceptors.response.use(
         }
         return apiClient(originalRequest);
       } catch (refreshError) {
-        // Refresh failed - clear auth and redirect to login
-        processQueue(refreshError as AxiosError, null);
+        // Refresh failed - log error for debugging
+        const error = refreshError as AxiosError;
+        console.error('Token refresh failed:', {
+          status: error.response?.status,
+          data: error.response?.data,
+          message: error.message,
+        });
+        
+        // Clear auth and redirect to login
+        processQueue(error, null);
         clearAuth();
         window.location.href = '/login';
         return Promise.reject(refreshError);
@@ -155,20 +173,90 @@ apiClient.interceptors.response.use(
 );
 
 // Token management functions (these will be implemented by auth context)
+// Primary: In-memory storage (security best practice - reduces XSS exposure)
 let accessToken: string | null = null;
 
+// Secondary: localStorage keys for persistence across page reloads
+const TOKEN_KEY = 'token';
+const TOKEN_EXPIRATION_KEY = 'tokenExpiration';
+const USER_ID_KEY = 'userId';
+// Token validity duration: 24 hours (access tokens expire in 15 min, but we store for 24h for persistence)
+const TOKEN_VALIDITY_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+
 function getAccessToken(): string | null {
-  return accessToken;
+  // First check in-memory (primary)
+  if (accessToken) {
+    return accessToken;
+  }
+  
+  // Fallback to localStorage (for persistence across page reloads)
+  const storedToken = localStorage.getItem(TOKEN_KEY);
+  if (storedToken) {
+    // Check if token is still valid (not expired)
+    const expirationTime = localStorage.getItem(TOKEN_EXPIRATION_KEY);
+    if (expirationTime) {
+      const expirationTimestamp = parseInt(expirationTime, 10);
+      if (Date.now() < expirationTimestamp) {
+        // Restore to memory and return
+        accessToken = storedToken;
+        return storedToken;
+      } else {
+        // Token expired, clear it
+        clearAuth();
+        return null;
+      }
+    }
+    // No expiration stored, assume valid and restore to memory
+    accessToken = storedToken;
+    return storedToken;
+  }
+  
+  return null;
 }
 
-function setAccessToken(token: string): void {
+function setAccessToken(token: string | null): void {
+  // Update in-memory (primary)
   accessToken = token;
+  
+  // Also update localStorage for backward compatibility and persistence
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+    // Store expiration timestamp (24 hours from now)
+    const expirationTime = Date.now() + TOKEN_VALIDITY_DURATION;
+    localStorage.setItem(TOKEN_EXPIRATION_KEY, expirationTime.toString());
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_EXPIRATION_KEY);
+  }
 }
 
 function clearAuth(): void {
+  // Clear in-memory
   accessToken = null;
-  // Clear any auth-related localStorage
+  
+  // Clear localStorage
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_EXPIRATION_KEY);
+  localStorage.removeItem(USER_ID_KEY);
   localStorage.removeItem('auth_state');
+}
+
+// Initialize token from localStorage on module load (for persistence across page reloads)
+// This restores the token to memory if it exists and is still valid
+if (typeof window !== 'undefined') {
+  const storedToken = localStorage.getItem(TOKEN_KEY);
+  const expirationTime = localStorage.getItem(TOKEN_EXPIRATION_KEY);
+  
+  if (storedToken && expirationTime) {
+    const expirationTimestamp = parseInt(expirationTime, 10);
+    if (Date.now() < expirationTimestamp) {
+      // Token is still valid, restore to memory
+      accessToken = storedToken;
+    } else {
+      // Token expired, clear it
+      clearAuth();
+    }
+  }
 }
 
 // Export functions to be used by auth context
