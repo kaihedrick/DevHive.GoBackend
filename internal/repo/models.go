@@ -22,6 +22,20 @@ type Message struct {
 	UpdatedAt       time.Time   `json:"updatedAt"`
 }
 
+// Temporary storage for OAuth state tokens (CSRF protection)
+type OauthState struct {
+	ID uuid.UUID `json:"id"`
+	// Random CSRF token for OAuth flow
+	StateToken string `json:"stateToken"`
+	// User preference for persistent login
+	RememberMe bool `json:"rememberMe"`
+	// Frontend URL to redirect after successful auth
+	RedirectUrl *string   `json:"redirectUrl"`
+	CreatedAt   time.Time `json:"createdAt"`
+	// State tokens expire after 10 minutes
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
 type PasswordReset struct {
 	ID         int32     `json:"id"`
 	UserID     uuid.UUID `json:"userId"`
@@ -65,6 +79,14 @@ type RefreshToken struct {
 	Token     string    `json:"token"`
 	ExpiresAt time.Time `json:"expiresAt"`
 	CreatedAt time.Time `json:"createdAt"`
+	// True for persistent login (Remember Me), false for session-only
+	IsPersistent bool `json:"isPersistent"`
+	// Google OAuth refresh token for re-authentication
+	GoogleRefreshToken *string `json:"googleRefreshToken"`
+	// Google OAuth access token (cached for API calls)
+	GoogleAccessToken *string `json:"googleAccessToken"`
+	// Expiration time for Google access token
+	GoogleTokenExpiry pgtype.Timestamptz `json:"googleTokenExpiry"`
 }
 
 type Sprint struct {
@@ -96,11 +118,17 @@ type User struct {
 	ID        uuid.UUID `json:"id"`
 	Username  string    `json:"username"`
 	Email     string    `json:"email"`
-	PasswordH string    `json:"passwordH"`
+	PasswordH *string   `json:"passwordH"`
 	FirstName string    `json:"firstName"`
 	LastName  string    `json:"lastName"`
 	Active    bool      `json:"active"`
 	AvatarUrl *string   `json:"avatarUrl"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	// Authentication method: local (username/password) or google (OAuth)
+	AuthProvider *string `json:"authProvider"`
+	// Google unique user identifier (sub claim from Google)
+	GoogleID *string `json:"googleId"`
+	// User profile picture URL from Google
+	ProfilePictureUrl *string `json:"profilePictureUrl"`
 }

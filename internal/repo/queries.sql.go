@@ -126,6 +126,98 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 	return i, err
 }
 
+const createOAuthState = `-- name: CreateOAuthState :one
+INSERT INTO oauth_state (state_token, remember_me, redirect_url, expires_at)
+VALUES ($1, $2, $3, $4)
+RETURNING id, state_token, remember_me, redirect_url, created_at, expires_at
+`
+
+type CreateOAuthStateParams struct {
+	StateToken  string    `json:"stateToken"`
+	RememberMe  bool      `json:"rememberMe"`
+	RedirectUrl *string   `json:"redirectUrl"`
+	ExpiresAt   time.Time `json:"expiresAt"`
+}
+
+// OAuth State Queries
+func (q *Queries) CreateOAuthState(ctx context.Context, arg CreateOAuthStateParams) (OauthState, error) {
+	row := q.db.QueryRow(ctx, createOAuthState,
+		arg.StateToken,
+		arg.RememberMe,
+		arg.RedirectUrl,
+		arg.ExpiresAt,
+	)
+	var i OauthState
+	err := row.Scan(
+		&i.ID,
+		&i.StateToken,
+		&i.RememberMe,
+		&i.RedirectUrl,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const createOAuthUser = `-- name: CreateOAuthUser :one
+INSERT INTO users (username, email, first_name, last_name, auth_provider, google_id, profile_picture_url)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, username, email, first_name, last_name, auth_provider, google_id, profile_picture_url, active, avatar_url, created_at, updated_at
+`
+
+type CreateOAuthUserParams struct {
+	Username          string  `json:"username"`
+	Email             string  `json:"email"`
+	FirstName         string  `json:"firstName"`
+	LastName          string  `json:"lastName"`
+	AuthProvider      *string `json:"authProvider"`
+	GoogleID          *string `json:"googleId"`
+	ProfilePictureUrl *string `json:"profilePictureUrl"`
+}
+
+type CreateOAuthUserRow struct {
+	ID                uuid.UUID `json:"id"`
+	Username          string    `json:"username"`
+	Email             string    `json:"email"`
+	FirstName         string    `json:"firstName"`
+	LastName          string    `json:"lastName"`
+	AuthProvider      *string   `json:"authProvider"`
+	GoogleID          *string   `json:"googleId"`
+	ProfilePictureUrl *string   `json:"profilePictureUrl"`
+	Active            bool      `json:"active"`
+	AvatarUrl         *string   `json:"avatarUrl"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
+}
+
+func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams) (CreateOAuthUserRow, error) {
+	row := q.db.QueryRow(ctx, createOAuthUser,
+		arg.Username,
+		arg.Email,
+		arg.FirstName,
+		arg.LastName,
+		arg.AuthProvider,
+		arg.GoogleID,
+		arg.ProfilePictureUrl,
+	)
+	var i CreateOAuthUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.FirstName,
+		&i.LastName,
+		&i.AuthProvider,
+		&i.GoogleID,
+		&i.ProfilePictureUrl,
+		&i.Active,
+		&i.AvatarUrl,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createPasswordReset = `-- name: CreatePasswordReset :one
 INSERT INTO password_resets (user_id, reset_token, expires_at)
 VALUES ($1, $2, $3)
@@ -216,26 +308,96 @@ func (q *Queries) CreateProjectInvite(ctx context.Context, arg CreateProjectInvi
 }
 
 const createRefreshToken = `-- name: CreateRefreshToken :one
-INSERT INTO refresh_tokens (user_id, token, expires_at)
-VALUES ($1, $2, $3)
-RETURNING id, user_id, token, expires_at, created_at
+INSERT INTO refresh_tokens (user_id, token, expires_at, is_persistent)
+VALUES ($1, $2, $3, $4)
+RETURNING id, user_id, token, expires_at, is_persistent, created_at
 `
 
 type CreateRefreshTokenParams struct {
-	UserID    uuid.UUID `json:"userId"`
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expiresAt"`
+	UserID       uuid.UUID `json:"userId"`
+	Token        string    `json:"token"`
+	ExpiresAt    time.Time `json:"expiresAt"`
+	IsPersistent bool      `json:"isPersistent"`
+}
+
+type CreateRefreshTokenRow struct {
+	ID           uuid.UUID `json:"id"`
+	UserID       uuid.UUID `json:"userId"`
+	Token        string    `json:"token"`
+	ExpiresAt    time.Time `json:"expiresAt"`
+	IsPersistent bool      `json:"isPersistent"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 // Refresh Token Queries
-func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error) {
-	row := q.db.QueryRow(ctx, createRefreshToken, arg.UserID, arg.Token, arg.ExpiresAt)
-	var i RefreshToken
+func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (CreateRefreshTokenRow, error) {
+	row := q.db.QueryRow(ctx, createRefreshToken,
+		arg.UserID,
+		arg.Token,
+		arg.ExpiresAt,
+		arg.IsPersistent,
+	)
+	var i CreateRefreshTokenRow
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
 		&i.Token,
 		&i.ExpiresAt,
+		&i.IsPersistent,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createRefreshTokenWithGoogle = `-- name: CreateRefreshTokenWithGoogle :one
+INSERT INTO refresh_tokens (user_id, token, expires_at, is_persistent, google_refresh_token, google_access_token, google_token_expiry)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, user_id, token, expires_at, is_persistent, google_refresh_token, google_access_token, google_token_expiry, created_at
+`
+
+type CreateRefreshTokenWithGoogleParams struct {
+	UserID             uuid.UUID          `json:"userId"`
+	Token              string             `json:"token"`
+	ExpiresAt          time.Time          `json:"expiresAt"`
+	IsPersistent       bool               `json:"isPersistent"`
+	GoogleRefreshToken *string            `json:"googleRefreshToken"`
+	GoogleAccessToken  *string            `json:"googleAccessToken"`
+	GoogleTokenExpiry  pgtype.Timestamptz `json:"googleTokenExpiry"`
+}
+
+type CreateRefreshTokenWithGoogleRow struct {
+	ID                 uuid.UUID          `json:"id"`
+	UserID             uuid.UUID          `json:"userId"`
+	Token              string             `json:"token"`
+	ExpiresAt          time.Time          `json:"expiresAt"`
+	IsPersistent       bool               `json:"isPersistent"`
+	GoogleRefreshToken *string            `json:"googleRefreshToken"`
+	GoogleAccessToken  *string            `json:"googleAccessToken"`
+	GoogleTokenExpiry  pgtype.Timestamptz `json:"googleTokenExpiry"`
+	CreatedAt          time.Time          `json:"createdAt"`
+}
+
+// OAuth Refresh Token Queries
+func (q *Queries) CreateRefreshTokenWithGoogle(ctx context.Context, arg CreateRefreshTokenWithGoogleParams) (CreateRefreshTokenWithGoogleRow, error) {
+	row := q.db.QueryRow(ctx, createRefreshTokenWithGoogle,
+		arg.UserID,
+		arg.Token,
+		arg.ExpiresAt,
+		arg.IsPersistent,
+		arg.GoogleRefreshToken,
+		arg.GoogleAccessToken,
+		arg.GoogleTokenExpiry,
+	)
+	var i CreateRefreshTokenWithGoogleRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Token,
+		&i.ExpiresAt,
+		&i.IsPersistent,
+		&i.GoogleRefreshToken,
+		&i.GoogleAccessToken,
+		&i.GoogleTokenExpiry,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -333,11 +495,11 @@ RETURNING id, username, email, first_name, last_name, active, avatar_url, create
 `
 
 type CreateUserParams struct {
-	Username  string `json:"username"`
-	Email     string `json:"email"`
-	PasswordH string `json:"passwordH"`
-	FirstName string `json:"firstName"`
-	LastName  string `json:"lastName"`
+	Username  string  `json:"username"`
+	Email     string  `json:"email"`
+	PasswordH *string `json:"passwordH"`
+	FirstName string  `json:"firstName"`
+	LastName  string  `json:"lastName"`
 }
 
 type CreateUserRow struct {
@@ -397,6 +559,15 @@ func (q *Queries) DeactivateUser(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const deleteExpiredOAuthStates = `-- name: DeleteExpiredOAuthStates :exec
+DELETE FROM oauth_state WHERE expires_at < now()
+`
+
+func (q *Queries) DeleteExpiredOAuthStates(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteExpiredOAuthStates)
+	return err
+}
+
 const deleteExpiredPasswordResets = `-- name: DeleteExpiredPasswordResets :exec
 DELETE FROM password_resets WHERE expires_at < now()
 `
@@ -421,6 +592,15 @@ DELETE FROM messages WHERE id = $1
 
 func (q *Queries) DeleteMessage(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteMessage, id)
+	return err
+}
+
+const deleteOAuthState = `-- name: DeleteOAuthState :exec
+DELETE FROM oauth_state WHERE state_token = $1
+`
+
+func (q *Queries) DeleteOAuthState(ctx context.Context, stateToken string) error {
+	_, err := q.db.Exec(ctx, deleteOAuthState, stateToken)
 	return err
 }
 
@@ -517,6 +697,26 @@ func (q *Queries) GetMessageByID(ctx context.Context, id uuid.UUID) (GetMessageB
 		&i.SenderFirstName,
 		&i.SenderLastName,
 		&i.SenderAvatarUrl,
+	)
+	return i, err
+}
+
+const getOAuthState = `-- name: GetOAuthState :one
+SELECT id, state_token, remember_me, redirect_url, created_at, expires_at
+FROM oauth_state
+WHERE state_token = $1 AND expires_at > now()
+`
+
+func (q *Queries) GetOAuthState(ctx context.Context, stateToken string) (OauthState, error) {
+	row := q.db.QueryRow(ctx, getOAuthState, stateToken)
+	var i OauthState
+	err := row.Scan(
+		&i.ID,
+		&i.StateToken,
+		&i.RememberMe,
+		&i.RedirectUrl,
+		&i.CreatedAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
@@ -701,19 +901,29 @@ func (q *Queries) GetProjectMembers(ctx context.Context, projectID uuid.UUID) ([
 }
 
 const getRefreshToken = `-- name: GetRefreshToken :one
-SELECT id, user_id, token, expires_at, created_at
+SELECT id, user_id, token, expires_at, is_persistent, created_at
 FROM refresh_tokens
 WHERE token = $1
 `
 
-func (q *Queries) GetRefreshToken(ctx context.Context, token string) (RefreshToken, error) {
+type GetRefreshTokenRow struct {
+	ID           uuid.UUID `json:"id"`
+	UserID       uuid.UUID `json:"userId"`
+	Token        string    `json:"token"`
+	ExpiresAt    time.Time `json:"expiresAt"`
+	IsPersistent bool      `json:"isPersistent"`
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
+func (q *Queries) GetRefreshToken(ctx context.Context, token string) (GetRefreshTokenRow, error) {
 	row := q.db.QueryRow(ctx, getRefreshToken, token)
-	var i RefreshToken
+	var i GetRefreshTokenRow
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
 		&i.Token,
 		&i.ExpiresAt,
+		&i.IsPersistent,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -829,9 +1039,22 @@ FROM users
 WHERE lower(email) = lower($1)
 `
 
-func (q *Queries) GetUserByEmail(ctx context.Context, lower string) (User, error) {
+type GetUserByEmailRow struct {
+	ID        uuid.UUID `json:"id"`
+	Username  string    `json:"username"`
+	Email     string    `json:"email"`
+	PasswordH *string   `json:"passwordH"`
+	FirstName string    `json:"firstName"`
+	LastName  string    `json:"lastName"`
+	Active    bool      `json:"active"`
+	AvatarUrl *string   `json:"avatarUrl"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+func (q *Queries) GetUserByEmail(ctx context.Context, lower string) (GetUserByEmailRow, error) {
 	row := q.db.QueryRow(ctx, getUserByEmail, lower)
-	var i User
+	var i GetUserByEmailRow
 	err := row.Scan(
 		&i.ID,
 		&i.Username,
@@ -839,6 +1062,48 @@ func (q *Queries) GetUserByEmail(ctx context.Context, lower string) (User, error
 		&i.PasswordH,
 		&i.FirstName,
 		&i.LastName,
+		&i.Active,
+		&i.AvatarUrl,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getUserByGoogleID = `-- name: GetUserByGoogleID :one
+SELECT id, username, email, first_name, last_name, auth_provider, google_id, profile_picture_url, active, avatar_url, created_at, updated_at
+FROM users
+WHERE google_id = $1
+`
+
+type GetUserByGoogleIDRow struct {
+	ID                uuid.UUID `json:"id"`
+	Username          string    `json:"username"`
+	Email             string    `json:"email"`
+	FirstName         string    `json:"firstName"`
+	LastName          string    `json:"lastName"`
+	AuthProvider      *string   `json:"authProvider"`
+	GoogleID          *string   `json:"googleId"`
+	ProfilePictureUrl *string   `json:"profilePictureUrl"`
+	Active            bool      `json:"active"`
+	AvatarUrl         *string   `json:"avatarUrl"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
+}
+
+// OAuth User Queries
+func (q *Queries) GetUserByGoogleID(ctx context.Context, googleID *string) (GetUserByGoogleIDRow, error) {
+	row := q.db.QueryRow(ctx, getUserByGoogleID, googleID)
+	var i GetUserByGoogleIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.FirstName,
+		&i.LastName,
+		&i.AuthProvider,
+		&i.GoogleID,
+		&i.ProfilePictureUrl,
 		&i.Active,
 		&i.AvatarUrl,
 		&i.CreatedAt,
@@ -888,9 +1153,22 @@ FROM users
 WHERE id = $1
 `
 
-func (q *Queries) GetUserByIDWithPassword(ctx context.Context, id uuid.UUID) (User, error) {
+type GetUserByIDWithPasswordRow struct {
+	ID        uuid.UUID `json:"id"`
+	Username  string    `json:"username"`
+	Email     string    `json:"email"`
+	PasswordH *string   `json:"passwordH"`
+	FirstName string    `json:"firstName"`
+	LastName  string    `json:"lastName"`
+	Active    bool      `json:"active"`
+	AvatarUrl *string   `json:"avatarUrl"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+func (q *Queries) GetUserByIDWithPassword(ctx context.Context, id uuid.UUID) (GetUserByIDWithPasswordRow, error) {
 	row := q.db.QueryRow(ctx, getUserByIDWithPassword, id)
-	var i User
+	var i GetUserByIDWithPasswordRow
 	err := row.Scan(
 		&i.ID,
 		&i.Username,
@@ -912,9 +1190,22 @@ FROM users
 WHERE lower(username) = lower($1)
 `
 
-func (q *Queries) GetUserByUsername(ctx context.Context, lower string) (User, error) {
+type GetUserByUsernameRow struct {
+	ID        uuid.UUID `json:"id"`
+	Username  string    `json:"username"`
+	Email     string    `json:"email"`
+	PasswordH *string   `json:"passwordH"`
+	FirstName string    `json:"firstName"`
+	LastName  string    `json:"lastName"`
+	Active    bool      `json:"active"`
+	AvatarUrl *string   `json:"avatarUrl"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+func (q *Queries) GetUserByUsername(ctx context.Context, lower string) (GetUserByUsernameRow, error) {
 	row := q.db.QueryRow(ctx, getUserByUsername, lower)
-	var i User
+	var i GetUserByUsernameRow
 	err := row.Scan(
 		&i.ID,
 		&i.Username,
@@ -1611,6 +1902,23 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 	return i, err
 }
 
+const updateRefreshTokenGoogleTokens = `-- name: UpdateRefreshTokenGoogleTokens :exec
+UPDATE refresh_tokens
+SET google_access_token = $2, google_token_expiry = $3
+WHERE token = $1
+`
+
+type UpdateRefreshTokenGoogleTokensParams struct {
+	Token             string             `json:"token"`
+	GoogleAccessToken *string            `json:"googleAccessToken"`
+	GoogleTokenExpiry pgtype.Timestamptz `json:"googleTokenExpiry"`
+}
+
+func (q *Queries) UpdateRefreshTokenGoogleTokens(ctx context.Context, arg UpdateRefreshTokenGoogleTokensParams) error {
+	_, err := q.db.Exec(ctx, updateRefreshTokenGoogleTokens, arg.Token, arg.GoogleAccessToken, arg.GoogleTokenExpiry)
+	return err
+}
+
 const updateSprint = `-- name: UpdateSprint :one
 UPDATE sprints
 SET name = $2, description = $3, start_date = $4, end_date = $5, updated_at = now()
@@ -1820,10 +2128,26 @@ WHERE id = $1
 
 type UpdateUserPasswordParams struct {
 	ID        uuid.UUID `json:"id"`
-	PasswordH string    `json:"passwordH"`
+	PasswordH *string   `json:"passwordH"`
 }
 
 func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
 	_, err := q.db.Exec(ctx, updateUserPassword, arg.ID, arg.PasswordH)
+	return err
+}
+
+const updateUserProfilePicture = `-- name: UpdateUserProfilePicture :exec
+UPDATE users
+SET profile_picture_url = $2, updated_at = now()
+WHERE id = $1
+`
+
+type UpdateUserProfilePictureParams struct {
+	ID                uuid.UUID `json:"id"`
+	ProfilePictureUrl *string   `json:"profilePictureUrl"`
+}
+
+func (q *Queries) UpdateUserProfilePicture(ctx context.Context, arg UpdateUserProfilePictureParams) error {
+	_, err := q.db.Exec(ctx, updateUserProfilePicture, arg.ID, arg.ProfilePictureUrl)
 	return err
 }

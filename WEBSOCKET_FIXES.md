@@ -75,3 +75,5 @@ if !ok {
 3. **Don't Reconnect on Normal Close**: Check close code before reconnecting
 4. **Handle 1006 Gracefully**: May indicate network issues, not always a bug
 
+
+

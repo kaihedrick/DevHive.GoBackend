@@ -19,3 +19,5 @@ ON CONFLICT (project_id, user_id) DO UPDATE
 SET role = 'owner'
 WHERE project_members.role != 'owner';
 
+
+

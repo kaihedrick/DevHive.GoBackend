@@ -51,10 +51,11 @@ func (s *UserServer) CreateUser(ctx context.Context, req *v1.CreateUserRequest) 
 		return nil, status.Errorf(codes.Internal, "failed to hash password: %v", err)
 	}
 
+	passwordStr := hashedPassword
 	user, err := s.queries.CreateUser(ctx, repo.CreateUserParams{
 		Username:  req.Username,
 		Email:     req.Email,
-		PasswordH: hashedPassword,
+		PasswordH: &passwordStr,
 		FirstName: req.FirstName,
 		LastName:  req.LastName,
 	})

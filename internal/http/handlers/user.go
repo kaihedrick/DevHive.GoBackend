@@ -74,10 +74,11 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create user (use validated/normalized email and username)
+	passwordStr := string(hashedPassword)
 	user, err := h.queries.CreateUser(r.Context(), repo.CreateUserParams{
 		Username:  username,
 		Email:     email,
-		PasswordH: string(hashedPassword),
+		PasswordH: &passwordStr,
 		FirstName: req.FirstName,
 		LastName:  req.LastName,
 	})

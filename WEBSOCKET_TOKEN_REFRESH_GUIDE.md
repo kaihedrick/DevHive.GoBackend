@@ -264,3 +264,5 @@ export JWT_EXPIRATION_MINUTES=1440  # 24 hours
 
 However, **recommended approach** is to keep 15-minute tokens and implement refresh logic.
 
+
+

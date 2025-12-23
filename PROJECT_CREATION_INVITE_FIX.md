@@ -137,3 +137,5 @@ After deploying the fix:
 ✅ **Fixed**: `CreateProject` response now includes `userRole` and `permissions`  
 ✅ **Result**: New projects will have owners in `project_members` and frontend will know about permissions
 
+
+

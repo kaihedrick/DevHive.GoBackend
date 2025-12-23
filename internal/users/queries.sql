@@ -45,3 +45,19 @@ FROM users
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2;
 
+-- OAuth User Queries
+-- name: GetUserByGoogleID :one
+SELECT id, username, email, first_name, last_name, auth_provider, google_id, profile_picture_url, active, avatar_url, created_at, updated_at
+FROM users
+WHERE google_id = $1;
+
+-- name: CreateOAuthUser :one
+INSERT INTO users (username, email, first_name, last_name, auth_provider, google_id, profile_picture_url)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, username, email, first_name, last_name, auth_provider, google_id, profile_picture_url, active, avatar_url, created_at, updated_at;
+
+-- name: UpdateUserProfilePicture :exec
+UPDATE users
+SET profile_picture_url = $2, updated_at = now()
+WHERE id = $1;
+
