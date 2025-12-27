@@ -6,6 +6,7 @@
 - [Real-time System](./realtime_system.md) - WebSocket and cache invalidation architecture
 - [SOP: Adding Migrations](../SOP/adding_migrations.md)
 - [SOP: Adding API Endpoints](../SOP/adding_api_endpoints.md)
+- [SOP: AWS Deployment](../SOP/aws_deployment.md) - Deploying to AWS Lambda and API Gateway
 
 ## Project Overview
 
@@ -23,12 +24,23 @@
 - **Go 1.25** - Primary language
 - **Chi v5** - HTTP router (lightweight, idiomatic)
 - **SQLC** - Type-safe SQL code generation
-- **PostgreSQL 12+** - Primary database with UUID support
+- **PostgreSQL 12+** - Primary database (Neon serverless PostgreSQL in production)
+
+#### AWS Infrastructure (Production)
+- **AWS Lambda** - Serverless compute for HTTP API and WebSocket handling
+- **AWS API Gateway HTTP API** - REST API endpoints with CORS
+- **AWS API Gateway WebSocket API** - Real-time bidirectional communication
+- **AWS DynamoDB** - WebSocket connection state storage
+- **AWS SAM** - Infrastructure as Code deployment
+- **Neon PostgreSQL** - Serverless PostgreSQL database
 
 #### Key Libraries
 - `jackc/pgx/v5` - PostgreSQL driver and connection pooling
 - `golang-jwt/jwt/v5` - JWT token generation and validation
-- `gorilla/websocket` - WebSocket support for real-time features
+- `aws-lambda-go` - AWS Lambda Go runtime
+- `aws-lambda-go-api-proxy/httpadapter` - Chi router to Lambda adapter
+- `aws-sdk-go-v2` - AWS SDK for DynamoDB, Lambda invocation
+- `gorilla/websocket` - WebSocket support (local development)
 - `go-chi/cors` - CORS middleware
 - `go-chi/httprate` - Rate limiting (100 req/min per IP)
 - `golang.org/x/crypto` - bcrypt password hashing
@@ -36,8 +48,8 @@
 
 #### Optional Integrations
 - Firebase Auth (v4.18.0) - Alternative authentication provider
-- Firebase Storage - File storage (with Fly.io volume fallback)
-- Mailgun - Email delivery
+- Firebase Storage - File storage
+- Resend - Transactional email delivery
 - gRPC - Optional gRPC API endpoints
 
 ## Project Structure
@@ -45,9 +57,15 @@
 ```
 DevHive.GoBackend/
 ├── cmd/
-│   └── devhive-api/
-│       ├── main.go                 # Application entry point
-│       └── migrations/             # Database migration files (SQL)
+│   ├── devhive-api/
+│   │   ├── main.go                 # Local development entry point (HTTP server)
+│   │   └── migrations/             # Database migration files (SQL)
+│   ├── lambda/
+│   │   └── main.go                 # AWS Lambda HTTP API handler
+│   ├── websocket/
+│   │   └── main.go                 # AWS Lambda WebSocket handler
+│   └── broadcaster/
+│       └── main.go                 # AWS Lambda broadcaster (pushes to WebSocket clients)
 ├── internal/                       # Private application code
 │   ├── config/                     # Configuration management
 │   │   └── config.go              # Environment-based config loading
@@ -72,11 +90,13 @@ DevHive.GoBackend/
 │   │   │   └── response.go        # Standardized HTTP responses
 │   │   └── router/
 │   │       └── router.go          # Route definitions and setup
-│   ├── ws/                         # WebSocket system
+│   ├── ws/                         # WebSocket system (local development)
 │   │   ├── hub.go                 # WebSocket hub and client management
 │   │   └── handlers.go            # WebSocket message handlers
+│   ├── broadcast/                  # AWS WebSocket broadcasting
+│   │   └── client.go              # Lambda invocation client for broadcaster
 │   ├── db/                         # Database utilities
-│   │   ├── notify_listener.go     # PostgreSQL NOTIFY listener
+│   │   ├── notify_listener.go     # PostgreSQL NOTIFY listener (local dev)
 │   │   └── postgres.go            # Database connection and migration runner
 │   ├── grpc/                       # gRPC server (optional)
 │   └── auth/                       # Authentication utilities
@@ -102,8 +122,10 @@ DevHive.GoBackend/
 │   └── README.md                  # Documentation index
 ├── go.mod                          # Go module dependencies
 ├── sqlc.yaml                       # SQLC configuration
-├── Dockerfile                      # Container image definition
-├── fly.toml                        # Fly.io deployment config
+├── template.yaml                   # AWS SAM template (Infrastructure as Code)
+├── samconfig.toml                  # AWS SAM deployment configuration
+├── Dockerfile                      # Container image definition (local/Fly.io)
+├── fly.toml                        # Fly.io deployment config (legacy)
 └── Makefile                        # Build and development tasks
 ```
 
@@ -191,7 +213,9 @@ type Config struct {
 ```
 
 ### Environment Variables
-- `DATABASE_URL` - PostgreSQL connection string
+
+#### Core Configuration
+- `DATABASE_URL` - PostgreSQL connection string (Neon serverless in production)
 - `JWT_SIGNING_KEY` - Secret for JWT token signing
 - `JWT_EXPIRATION_MINUTES` - Access token lifetime (default: 15)
 - `JWT_REFRESH_EXPIRATION_DAYS` - Refresh token lifetime (default: 7)
@@ -199,12 +223,27 @@ type Config struct {
 - `JWT_REFRESH_EXPIRATION_SESSION_HOURS` - Session refresh token lifetime (default: 0 = browser session)
 - `CORS_ORIGINS` - Comma-separated allowed origins
 - `ADMIN_CERTIFICATES_PASSWORD` - Admin verification password
-- `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `MAILGUN_SENDER` - Email config
-- `GOOGLE_CLIENT_ID` - Google OAuth 2.0 client ID (required for Google OAuth)
-- `GOOGLE_CLIENT_SECRET` - Google OAuth 2.0 client secret (required for Google OAuth)
+- `FRONTEND_URL` - Frontend URL for OAuth redirects (default: `https://devhive.it.com`)
+
+#### Email (Resend)
+- `RESEND_API_KEY` - Resend API key for transactional emails
+- `RESEND_FROM_EMAIL` - Sender email address (default: `noreply@devhive.it.com`)
+
+#### Google OAuth
+- `GOOGLE_CLIENT_ID` - Google OAuth 2.0 client ID
+- `GOOGLE_CLIENT_SECRET` - Google OAuth 2.0 client secret
 - `GOOGLE_REDIRECT_URL` - OAuth callback URL
-  - Default (local): `http://localhost:8080/api/v1/auth/google/callback`
-  - Production: `https://devhive-go-backend.fly.dev/api/v1/auth/google/callback` (set via Fly.io secrets)
+  - Local: `http://localhost:8080/api/v1/auth/google/callback`
+  - Production: `https://go.devhive.it.com/api/v1/auth/google/callback`
+
+#### AWS Lambda-specific
+- `BROADCASTER_FUNCTION_NAME` - Name of broadcaster Lambda (set automatically by SAM)
+- `CONNECTIONS_TABLE` - DynamoDB table name for WebSocket connections
+- `WEBSOCKET_ENDPOINT` - WebSocket API Gateway endpoint for broadcaster
+
+#### Optional (Firebase)
+- `FIREBASE_JSON_BASE64` - Base64-encoded Firebase service account JSON
+- `FIREBASE_STORAGE_BUCKET` - Firebase Storage bucket name
 
 ## Database Design Principles
 
@@ -265,9 +304,75 @@ Error responses:
 
 ## Deployment Architecture
 
-### Fly.io Deployment
+### AWS Serverless (Production)
+
+The production deployment uses AWS serverless architecture with three Lambda functions:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           AWS API Gateway                                    │
+├─────────────────────────────────┬───────────────────────────────────────────┤
+│       HTTP API (REST)           │        WebSocket API                       │
+│   https://xxx.execute-api...    │    wss://xxx.execute-api.../prod           │
+└───────────────┬─────────────────┴──────────────────┬────────────────────────┘
+                │                                     │
+                ▼                                     ▼
+┌───────────────────────────┐         ┌──────────────────────────────┐
+│   devhive-api Lambda      │         │   devhive-websocket Lambda   │
+│   (HTTP API Handler)      │         │   (WebSocket Handler)        │
+│   - Chi router adapter    │         │   - $connect, $disconnect    │
+│   - All REST endpoints    │         │   - subscribe, unsubscribe   │
+│   - Auth, projects, etc.  │         │   - JWT validation           │
+└───────────────┬───────────┘         └──────────────────────────────┘
+                │                                     │
+                │                                     │
+                │ invokes                             │ reads/writes
+                ▼                                     ▼
+┌───────────────────────────┐         ┌──────────────────────────────┐
+│   devhive-broadcaster     │         │       DynamoDB Table         │
+│   Lambda                  │◄────────│   devhive-ws-connections     │
+│   - Push to WS clients    │         │   - connectionId (PK)        │
+│   - Query by project_id   │         │   - projectId (GSI)          │
+└───────────────────────────┘         │   - userId, TTL              │
+                                      └──────────────────────────────┘
+                │
+                ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                          Neon PostgreSQL (us-west-2)                          │
+│   postgresql://...@ep-xxx.us-west-2.aws.neon.tech/neondb?sslmode=require     │
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Lambda Functions
+
+| Function | Purpose | Trigger |
+|----------|---------|---------|
+| `devhive-api` | HTTP REST API | API Gateway HTTP API |
+| `devhive-websocket` | WebSocket connections | API Gateway WebSocket API |
+| `devhive-broadcaster` | Push messages to clients | Invoked by devhive-api |
+
+#### AWS Resources (from template.yaml)
+
+- **DevHiveHttpApi** - HTTP API Gateway with CORS
+- **DevHiveWebSocketApi** - WebSocket API Gateway
+- **ConnectionsTable** - DynamoDB table for WebSocket connections
+- **DevHiveFunction** - HTTP API Lambda
+- **WebSocketFunction** - WebSocket Lambda
+- **BroadcasterFunction** - Broadcaster Lambda
+
+#### Production URLs
+
+**Custom Domains (recommended):**
+- **HTTP API**: `https://go.devhive.it.com`
+- **WebSocket**: `wss://ws.devhive.it.com`
+
+**Direct API Gateway URLs:**
+- **HTTP API**: `https://7x1vij0u6k.execute-api.us-west-2.amazonaws.com`
+- **WebSocket**: `wss://er7oc4a3o5.execute-api.us-west-2.amazonaws.com/prod`
+
+### Fly.io Deployment (Legacy/Alternative)
 - **Platform**: Fly.io with Docker containerization
-- **Database**: Fly.io PostgreSQL cluster
+- **Database**: Fly.io PostgreSQL cluster or external
 - **Storage**: Fly.io persistent volumes for file uploads
 - **Regions**: Configurable (default: DFW)
 - **Scaling**: Horizontal scaling supported (stateless design)
@@ -280,8 +385,8 @@ Error responses:
 ### CI/CD Pipeline
 - GitHub Actions workflows in `.github/workflows/`
 - Automated testing on push
-- Container builds and deployments
-- Migration verification
+- AWS SAM build and deploy for Lambda
+- Container builds for Fly.io (alternative)
 
 ## Security Features
 
@@ -334,18 +439,36 @@ Error responses:
 - TypeScript type definitions (can be generated)
 
 ### External Services
-- **Mailgun** - Transactional email delivery
-- **Firebase** (optional) - Alternative auth and storage
-- **Fly.io** - Hosting and persistent storage
+- **Neon** - Serverless PostgreSQL database (production)
+- **Resend** - Transactional email delivery
+- **Google OAuth** - Social authentication
+- **Firebase** (optional) - File storage
+- **AWS** - Lambda, API Gateway, DynamoDB (production infrastructure)
 
 ## Development Workflow
 
 ### Local Development
-1. Set up PostgreSQL database
+1. Set up PostgreSQL database (or use Neon for remote dev)
 2. Copy `.env.example` to `.env` and configure
 3. Run `go mod download` to install dependencies
 4. Run `make migrate` or start server (auto-migrates)
 5. Access API at `http://localhost:8080`
+
+### AWS Deployment
+```bash
+# Build Lambda functions
+sam build --profile devhive
+
+# Deploy to AWS (with parameters)
+sam deploy --profile devhive --parameter-overrides \
+  "DatabaseURL=postgresql://..." \
+  "JWTSigningKey=..." \
+  "GoogleClientID=..." \
+  "GoogleClientSecret=..." \
+  ...
+```
+
+See [SOP: AWS Deployment](../SOP/aws_deployment.md) for full deployment guide.
 
 ### Code Generation
 - **SQLC**: `sqlc generate` to regenerate database code
@@ -373,14 +496,15 @@ Error responses:
 ## Known Limitations & Future Improvements
 
 ### Current Limitations
-- No WebSocket authentication on initial connection (handled via join_project message)
+- WebSocket real-time in Lambda requires broadcaster Lambda invocation (adds latency)
 - Admin endpoints (`/migrations`) not production-secured
 - Firebase integration optional but not fully utilized
 - gRPC API exists but not actively used
+- PostgreSQL NOTIFY/LISTEN not available in Lambda (replaced by broadcaster pattern)
 
 ### Planned Improvements
-- Enhanced observability (Prometheus metrics)
-- WebSocket authentication on connection handshake
+- Enhanced observability (CloudWatch metrics, X-Ray tracing)
 - Admin role and RBAC for system-level operations
-- Automated database backup and restore
+- Automated database backup (Neon handles this)
 - Multi-region deployment support
+- WebSocket connection authentication improvements

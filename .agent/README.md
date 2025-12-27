@@ -9,6 +9,7 @@ New to the project? Start here:
 1. **[Project Architecture](./System/project_architecture.md)** - Understand the overall system design, tech stack, and project structure
 2. **[Database Schema](./System/database_schema.md)** - Learn about the data models and relationships
 3. **[Authentication Flow](./System/authentication_flow.md)** - Understand how auth works (critical for API integration)
+4. **[AWS Deployment](./SOP/aws_deployment.md)** - Deploy to AWS Lambda and API Gateway
 
 ## Documentation Structure
 
@@ -21,9 +22,12 @@ New to the project? Start here:
 │   ├── authentication_flow.md
 │   └── realtime_system.md
 ├── Tasks/              # Feature PRDs and implementation plans
+│   └── google_oauth.md
 └── SOP/                # Standard operating procedures
     ├── adding_migrations.md
-    └── adding_api_endpoints.md
+    ├── adding_api_endpoints.md
+    ├── aws_deployment.md
+    └── authentication_cookies_tokens.md
 ```
 
 ---
@@ -38,12 +42,12 @@ These documents describe the current state of the system.
 
 **Contents:**
 - Project overview and core purpose
-- Tech stack (Go 1.25, Chi, PostgreSQL, SQLC, WebSocket)
+- Tech stack (Go 1.25, Chi, Neon PostgreSQL, SQLC, WebSocket)
 - Project structure and folder organization
 - Architecture layers (HTTP, Data, Real-time, gRPC)
 - Core features (auth, user management, projects, sprints, tasks, messaging)
 - Configuration and environment variables
-- Deployment architecture (Fly.io)
+- Deployment architecture (AWS Lambda + API Gateway)
 - Security features and performance optimizations
 - Integration points (frontend, external services)
 
@@ -148,6 +152,27 @@ These documents describe the current state of the system.
 
 Standard operating procedures for common development tasks.
 
+### ☁️ [AWS Deployment](./SOP/aws_deployment.md)
+
+**Use this when:** Deploying to AWS Lambda and API Gateway
+
+**Contents:**
+- Prerequisites (AWS CLI, SAM CLI, SSO)
+- SAM template configuration
+- Step-by-step deployment process
+- Database migration options
+- Monitoring and debugging
+- Common issues and solutions
+- Production URLs and checklist
+
+**Key sections:**
+- Step-by-Step Deployment - Build and deploy commands
+- Database Migrations - Three options for running migrations
+- Common Issues - Troubleshooting guide
+- Checklist - Pre and post-deployment verification
+
+---
+
 ### 🔧 [Adding Database Migrations](./SOP/adding_migrations.md)
 
 **Use this when:** You need to change the database schema
@@ -219,8 +244,27 @@ This folder contains PRD (Product Requirement Documents) and implementation plan
 
 **Current tasks:**
 
+### [Real-time Cache Invalidation & Messaging](./Tasks/realtime_cache_invalidation_COMPLETED.md)
+**Status:** ✅ COMPLETED (December 2025)
+**Description:** Implementation of real-time message delivery and cache invalidation for messages and project members
+
+**Completed Features:**
+- Real-time message broadcasts (`message_created` events)
+- Database triggers for messages table cache invalidation
+- Member add/remove real-time updates (`member_added`, `member_removed` events)
+- AWS Lambda WebSocket integration with broadcaster
+- DynamoDB connection state management
+- PostgreSQL NOTIFY/LISTEN triggers for backup consistency
+
+**Files Modified:**
+- `internal/http/handlers/message.go` - Added broadcast on message creation
+- `migrations/007_ensure_notify_triggers.sql` - Messages trigger and function update
+- Verified member broadcasts in `internal/http/handlers/project.go`
+
+---
+
 ### [Google OAuth 2.0 Authentication](./Tasks/google_oauth.md)
-**Status:** Planning - Ready for Implementation
+**Status:** ✅ COMPLETED (December 2025)
 **Description:** Comprehensive implementation plan for adding Google OAuth 2.0 authentication alongside existing username/password auth, with persistent login controlled by "Remember Me" checkbox
 
 **Key Features:**
@@ -310,15 +354,21 @@ For reference beyond this codebase:
 
 | What | Where |
 |------|-------|
-| Main entry point | `cmd/devhive-api/main.go` |
+| Local dev entry point | `cmd/devhive-api/main.go` |
+| Lambda HTTP handler | `cmd/lambda/main.go` |
+| Lambda WebSocket handler | `cmd/websocket/main.go` |
+| Lambda Broadcaster | `cmd/broadcaster/main.go` |
+| Broadcast client | `internal/broadcast/client.go` |
 | Route definitions | `internal/http/router/router.go` |
 | Handlers | `internal/http/handlers/{resource}.go` |
 | Database queries (SQLC) | `internal/repo/queries.sql.go` |
 | Database models | `internal/repo/models.go` |
 | Migrations | `cmd/devhive-api/migrations/` |
-| WebSocket hub | `internal/ws/hub.go` |
-| NOTIFY listener | `internal/db/notify_listener.go` |
+| WebSocket hub (local) | `internal/ws/hub.go` |
+| NOTIFY listener (local) | `internal/db/notify_listener.go` |
 | Config | `internal/config/config.go` |
+| SAM template | `template.yaml` |
+| SAM config | `samconfig.toml` |
 
 ### Common Commands
 
@@ -333,14 +383,34 @@ sqlc generate
 go test ./...
 
 # Run migrations manually
-psql -d devhive -f cmd/devhive-api/migrations/{number}_{name}.sql
+psql "postgresql://..." -f cmd/devhive-api/migrations/{number}_{name}.sql
+
+# ===== AWS Deployment =====
+
+# Build Lambda functions
+sam build --profile devhive
+
+# Deploy to AWS
+sam deploy --profile devhive --parameter-overrides "DatabaseURL=..." "JWTSigningKey=..."
+
+# View Lambda logs
+aws logs tail /aws/lambda/devhive-api --follow --profile devhive
+
+# ===== Legacy Fly.io =====
 
 # Deploy to Fly.io
 fly deploy
 
-# Check deployment logs
+# Check Fly.io logs
 fly logs
 ```
+
+### Production Endpoints
+
+| Service | Custom Domain | Direct API Gateway |
+|---------|---------------|-------------------|
+| HTTP API | `https://go.devhive.it.com` | `https://7x1vij0u6k.execute-api.us-west-2.amazonaws.com` |
+| WebSocket | `wss://ws.devhive.it.com` | `wss://er7oc4a3o5.execute-api.us-west-2.amazonaws.com/prod` |
 
 ### Common API Endpoints
 
@@ -356,7 +426,13 @@ fly logs
 | `/api/v1/projects/{id}` | GET | Get project details |
 | `/api/v1/projects/{id}/sprints` | GET | List sprints |
 | `/api/v1/projects/{id}/tasks` | GET | List tasks |
-| `/api/v1/messages/ws` | GET | WebSocket connection |
+| WebSocket (all events) | - | `wss://ws.devhive.it.com?token=<jwt>` |
+
+**WebSocket Connection:**
+- Single endpoint for both cache invalidation and real-time messaging
+- Connect: `wss://ws.devhive.it.com?token=<jwt>`
+- Subscribe: Send `{"action": "subscribe", "project_id": "<uuid>"}`
+- Events received: `task_created`, `task_updated`, `sprint_created`, `message_created`, etc.
 
 ---
 
@@ -391,14 +467,34 @@ If you have suggestions for improving the documentation structure or content:
 
 ---
 
-**Last Updated:** 2025-12-23
+**Last Updated:** 2025-12-27
 
-**Documentation Version:** 1.3
+**Documentation Version:** 2.4
 
 **Maintained by:** DevHive Team
 
 **Recent Updates:**
-- Added Google OAuth configuration documentation (environment variables, validation)
-- Updated authentication flow to document configuration requirements and error handling
-- Updated production Google OAuth redirect URL to `https://devhive-go-backend.fly.dev/api/v1/auth/google/callback`
-- Updated Google OAuth callback to redirect to frontend with token in URL fragment (redirects to `https://devhive.it.com/dashboard`)
+- **Docs:** Added completion summary for real-time cache invalidation & messaging implementation
+  - Created `Tasks/realtime_cache_invalidation_COMPLETED.md` documenting completed features
+  - All real-time features now working: messages, member join/leave, cache invalidation
+  - Updated README Tasks section with completion status
+- **Fix:** Message WebSocket events now working correctly
+  - Added missing PostgreSQL NOTIFY trigger for `messages` table
+  - Fixed immediate broadcast in message handler for Lambda deployment
+  - Backend now sends both `message_created` and `cache_invalidate` events for messages
+- **Fix:** WebSocket Lambda now handles empty `projectId` correctly (uses `omitempty` for DynamoDB GSI compatibility)
+- **New:** Added custom domains for API endpoints
+  - HTTP API: `https://go.devhive.it.com`
+  - WebSocket API: `wss://ws.devhive.it.com`
+- **New:** Custom domain setup guide in `aws_deployment.md`
+- Updated production URLs in all documentation
+- Updated Google OAuth redirect URL to use custom domain (`https://go.devhive.it.com/api/v1/auth/google/callback`)
+- **Major:** Added AWS Lambda and API Gateway deployment architecture
+- Added `aws_deployment.md` SOP with full deployment guide
+- Updated `project_architecture.md` with AWS infrastructure details
+- Updated `realtime_system.md` with AWS WebSocket API architecture
+- Added new Lambda entry points: `cmd/lambda/`, `cmd/websocket/`, `cmd/broadcaster/`
+- Added broadcast client for Lambda WebSocket messaging
+- Updated environment variables documentation (Resend instead of Mailgun)
+- Production now on AWS API Gateway (HTTP + WebSocket)
+- Database now on Neon PostgreSQL (serverless, us-west-2)

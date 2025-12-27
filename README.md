@@ -1,51 +1,63 @@
-# DevHive Backend - Go MVP
+# DevHive Backend - Go API
 
-A modern, scalable Go backend for DevHive, featuring Firebase authentication, PostgreSQL database, and comprehensive project management capabilities.
+A modern, scalable Go backend for DevHive, featuring JWT authentication, PostgreSQL database, AWS Lambda deployment, and comprehensive project management capabilities.
 
 ## 🚀 Features
 
-- **Authentication**: Firebase-based user authentication with JWT tokens
+- **Authentication**: JWT-based authentication with refresh tokens and optional Google OAuth
 - **User Management**: User profiles, avatars, and role-based access control
-- **Project Management**: Create, manage, and collaborate on projects
+- **Project Management**: Create, manage, and collaborate on projects with invites
 - **Sprint Planning**: Agile sprint management with start/end dates
+- **Task Tracking**: Comprehensive task management with status updates
 - **Team Collaboration**: Role-based project membership (owner, admin, member, viewer)
-- **Real-time Messaging**: Threaded project discussions with file support
-- **File Storage**: Firebase Storage integration with Fly.io volume fallback
+- **Real-time Messaging**: Threaded project discussions with WebSocket events
+- **Email Integration**: Password reset and user notifications via Resend
 - **API-First Design**: RESTful API with comprehensive documentation
-- **Production Ready**: Docker containerization, health checks, and monitoring
+- **Production Ready**: AWS Lambda deployment, health checks, and monitoring
 
 ## 🏗️ Architecture
 
+### AWS Production Architecture
 ```
-DevHive Backend
-├── cmd/main.go          # Application entry point
-├── config/              # Configuration management
-├── db/                  # Database connection and schema
-├── models/              # Data models and business logic
-├── controllers/         # HTTP request handlers
-├── storage/             # File storage abstraction
-├── Dockerfile           # Container configuration
-├── fly.toml            # Fly.io deployment config
-└── .github/workflows/   # CI/CD automation
+DevHive Backend (AWS Lambda + API Gateway)
+├── cmd/lambda/main.go         # HTTP API Lambda entry point
+├── cmd/websocket/main.go      # WebSocket Lambda entry point
+├── cmd/broadcaster/main.go    # Broadcaster Lambda entry point
+├── internal/http/handlers/    # Chi v5 HTTP request handlers
+├── internal/repo/             # SQLC-generated database queries
+├── internal/broadcast/        # Cross-Lambda communication
+├── internal/ws/               # Local WebSocket hub (dev only)
+├── internal/db/               # PostgreSQL NOTIFY listener
+├── .agent/                    # Comprehensive documentation
+├── template.yaml              # AWS SAM infrastructure
+└── samconfig.toml             # AWS deployment configuration
 ```
 
 ## 🛠️ Tech Stack
 
-- **Language**: Go 1.22
-- **Framework**: Gin (HTTP router)
-- **Database**: PostgreSQL with UUID support
-- **Authentication**: Firebase Auth + JWT
-- **Storage**: Firebase Storage + Fly.io volumes
-- **Deployment**: Fly.io with Docker
+### Backend Framework
+- **Language**: Go 1.25
+- **Framework**: Chi v5 (HTTP router)
+- **Database**: PostgreSQL with pgx driver and SQLC code generation
+- **Authentication**: JWT with refresh tokens + optional Google OAuth 2.0
+- **Email**: Resend API for transactional emails
+
+### AWS Infrastructure (Production)
+- **Compute**: AWS Lambda (serverless functions)
+- **API Gateway**: HTTP API (REST) + WebSocket API (real-time)
+- **Database**: Neon PostgreSQL (serverless, us-west-2)
+- **Storage**: AWS DynamoDB (WebSocket connection state)
+- **Deployment**: AWS SAM (Infrastructure as Code)
 - **CI/CD**: GitHub Actions
 
 ## 📋 Prerequisites
 
-- Go 1.22 or later
-- PostgreSQL 12 or later
-- Firebase project with Auth and Storage enabled
-- Fly.io account and CLI
+- Go 1.25 or later
+- PostgreSQL 12 or later (or Neon account for production)
+- AWS account with CLI configured
+- AWS SAM CLI for deployment
 - Docker (for local development)
+- Optional: Google Cloud Console for OAuth (if using Google auth)
 
 ## 🚀 Quick Start
 
@@ -133,43 +145,67 @@ docker run -p 8080:8080 \
   devhive-backend
 ```
 
-## ☁️ Fly.io Deployment
+## ☁️ AWS Lambda Deployment
 
-### 1. Install Fly CLI
+### Prerequisites
+- AWS CLI configured with appropriate permissions
+- AWS SAM CLI installed
+- Neon PostgreSQL database set up
+
+### 1. Install AWS SAM CLI
 
 ```bash
 # macOS
-brew install flyctl
+brew install aws-sam-cli
+
+# Windows (via Chocolatey)
+choco install aws-sam-cli
 
 # Linux
-curl -L https://fly.io/install.sh | sh
+# Follow: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html
 ```
 
-### 2. Login to Fly.io
+### 2. Configure AWS Credentials
 
 ```bash
-fly auth login
+aws configure sso
+# Follow prompts to authenticate with AWS SSO
 ```
 
-### 3. Create Volume for File Storage
+### 3. Build and Deploy
 
 ```bash
-fly volumes create devhive_data --size 10 --region dfw
+# Build the Lambda functions
+sam build
+
+# Deploy to AWS (first time includes guided setup)
+sam deploy --guided
+
+# Subsequent deploys (uses samconfig.toml)
+sam deploy
 ```
 
-### 4. Deploy
+### 4. Environment Variables
+
+Set these in AWS Systems Manager Parameter Store or as Lambda environment variables:
 
 ```bash
-fly deploy
+DATABASE_URL=postgresql://user:pass@host:5432/dbname?sslmode=require
+JWT_SIGNING_KEY=your-super-secret-jwt-key
+JWT_ISSUER=https://go.devhive.it.com
+JWT_AUDIENCE=devhive-clients
+RESEND_API_KEY=your-resend-api-key
+GOOGLE_OAUTH_CLIENT_ID=your-google-client-id  # Optional
+GOOGLE_OAUTH_CLIENT_SECRET=your-google-secret  # Optional
 ```
 
-### 5. Set Secrets
+### 5. Custom Domain Setup (Optional)
 
-```bash
-fly secrets set DB_PASSWORD=your-db-password
-fly secrets set JWT_SECRET=your-jwt-secret
-fly secrets set FIREBASE_SERVICE_ACCOUNT_KEY="$(cat firebase-service-account.json)"
-```
+Update API Gateway with custom domain:
+- HTTP API: `https://go.devhive.it.com`
+- WebSocket API: `wss://ws.devhive.it.com`
+
+See `.agent/SOP/aws_deployment.md` for detailed instructions.
 
 ## 📚 API Documentation
 
@@ -177,15 +213,15 @@ fly secrets set FIREBASE_SERVICE_ACCOUNT_KEY="$(cat firebase-service-account.jso
 
 #### Register User
 ```http
-POST /api/v1/auth/register
+POST /api/v1/users
 Content-Type: application/json
 
 {
-  "firebase_id_token": "firebase_token_here",
   "email": "user@example.com",
-  "username": "username",
-  "first_name": "John",
-  "last_name": "Doe"
+  "username": "johndoe",
+  "password": "securepassword123",
+  "firstName": "John",
+  "lastName": "Doe"
 }
 ```
 
@@ -195,7 +231,8 @@ POST /api/v1/auth/login
 Content-Type: application/json
 
 {
-  "firebase_id_token": "firebase_token_here"
+  "email": "user@example.com",
+  "password": "securepassword123"
 }
 ```
 
@@ -402,13 +439,16 @@ Prometheus-compatible metrics endpoint.
 
 ### Environment Variables
 
-Ensure all required environment variables are set in production:
+Required environment variables for production:
 
-- Database credentials
-- JWT secret (use a strong, random key)
-- Firebase configuration
-- CORS origins
-- Logging level
+- `DATABASE_URL`: Neon PostgreSQL connection string
+- `JWT_SIGNING_KEY`: Strong random key for JWT signing
+- `JWT_ISSUER`: Token issuer (e.g., `https://go.devhive.it.com`)
+- `JWT_AUDIENCE`: Token audience (e.g., `devhive-clients`)
+- `RESEND_API_KEY`: API key for email sending
+- `CORS_ORIGINS`: Allowed CORS origins (comma-separated)
+- `GOOGLE_OAUTH_CLIENT_ID`: Google OAuth client ID (optional)
+- `GOOGLE_OAUTH_CLIENT_SECRET`: Google OAuth client secret (optional)
 
 ### Security Considerations
 

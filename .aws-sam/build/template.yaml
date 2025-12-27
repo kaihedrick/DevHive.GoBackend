@@ -1,0 +1,368 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: DevHive Backend API with HTTP API Gateway, WebSocket API, and Lambda
+Parameters:
+  DatabaseURL:
+    Type: String
+    Description: Neon PostgreSQL connection string
+    NoEcho: true
+  JWTSigningKey:
+    Type: String
+    Description: JWT signing key
+    NoEcho: true
+  GoogleClientID:
+    Type: String
+    Description: Google OAuth Client ID
+    Default: ''
+  GoogleClientSecret:
+    Type: String
+    Description: Google OAuth Client Secret
+    NoEcho: true
+    Default: ''
+  CORSOrigins:
+    Type: String
+    Description: Comma-separated CORS origins
+    Default: http://localhost:3000,http://localhost:5173,https://devhive.it.com,https://go.devhive.it.com
+  AdminPassword:
+    Type: String
+    Description: Admin certificates password
+    NoEcho: true
+    Default: ''
+  ResendAPIKey:
+    Type: String
+    Description: Resend API Key
+    NoEcho: true
+    Default: ''
+  ResendFromEmail:
+    Type: String
+    Description: Resend From Email Address
+    Default: noreply@devhive.it.com
+  FirebaseJSONBase64:
+    Type: String
+    Description: Base64 encoded Firebase service account JSON
+    NoEcho: true
+    Default: ''
+  FirebaseStorageBucket:
+    Type: String
+    Description: Firebase Storage Bucket name
+    Default: ''
+  FrontendURL:
+    Type: String
+    Description: Frontend URL for OAuth redirects
+    Default: https://devhive.it.com
+  GoogleRedirectURL:
+    Type: String
+    Description: Google OAuth redirect URL (update after deployment)
+    Default: http://localhost:8080/api/v1/auth/google/callback
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256
+    Runtime: provided.al2023
+    Architectures:
+    - x86_64
+Resources:
+  ConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: devhive-ws-connections
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: connectionId
+        AttributeType: S
+      - AttributeName: projectId
+        AttributeType: S
+      KeySchema:
+      - AttributeName: connectionId
+        KeyType: HASH
+      GlobalSecondaryIndexes:
+      - IndexName: projectId-index
+        KeySchema:
+        - AttributeName: projectId
+          KeyType: HASH
+        Projection:
+          ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+  DevHiveHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      CorsConfiguration:
+        AllowOrigins:
+        - http://localhost:3000
+        - http://localhost:5173
+        - https://devhive.it.com
+        - https://go.devhive.it.com
+        AllowMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - PATCH
+        - OPTIONS
+        AllowHeaders:
+        - Content-Type
+        - Authorization
+        - X-Requested-With
+        - Accept
+        - Origin
+        - Cookie
+        ExposeHeaders:
+        - Set-Cookie
+        - X-Request-Id
+        AllowCredentials: true
+        MaxAge: 300
+  DevHiveFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+      SamResourceId: DevHiveFunction
+    Properties:
+      FunctionName: devhive-api
+      CodeUri: DevHiveFunction
+      Handler: bootstrap
+      Environment:
+        Variables:
+          DATABASE_URL:
+            Ref: DatabaseURL
+          JWT_SIGNING_KEY:
+            Ref: JWTSigningKey
+          JWT_ISSUER: https://api.devhive.it.com
+          JWT_AUDIENCE: devhive-clients
+          CORS_ORIGINS:
+            Ref: CORSOrigins
+          CORS_ALLOW_CREDENTIALS: 'true'
+          GOOGLE_CLIENT_ID:
+            Ref: GoogleClientID
+          GOOGLE_CLIENT_SECRET:
+            Ref: GoogleClientSecret
+          GOOGLE_REDIRECT_URL:
+            Ref: GoogleRedirectURL
+          ADMIN_CERTIFICATES_PASSWORD:
+            Ref: AdminPassword
+          BROADCASTER_FUNCTION_NAME:
+            Ref: BroadcasterFunction
+          CONNECTIONS_TABLE:
+            Ref: ConnectionsTable
+          RESEND_API_KEY:
+            Ref: ResendAPIKey
+          RESEND_FROM_EMAIL:
+            Ref: ResendFromEmail
+          FIREBASE_JSON_BASE64:
+            Ref: FirebaseJSONBase64
+          FIREBASE_STORAGE_BUCKET:
+            Ref: FirebaseStorageBucket
+          FRONTEND_URL:
+            Ref: FrontendURL
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: ConnectionsTable
+      - LambdaInvokePolicy:
+          FunctionName:
+            Ref: BroadcasterFunction
+      Events:
+        ApiProxy:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: DevHiveHttpApi
+            Path: /{proxy+}
+            Method: ANY
+        ApiRoot:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: DevHiveHttpApi
+            Path: /
+            Method: ANY
+  DevHiveWebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: devhive-websocket-api
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: $request.body.action
+  WebSocketStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId:
+        Ref: DevHiveWebSocketApi
+      StageName: prod
+      AutoDeploy: true
+  WebSocketFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+      SamResourceId: WebSocketFunction
+    Properties:
+      FunctionName: devhive-websocket
+      CodeUri: WebSocketFunction
+      Handler: bootstrap
+      Environment:
+        Variables:
+          CONNECTIONS_TABLE:
+            Ref: ConnectionsTable
+          JWT_SIGNING_KEY:
+            Ref: JWTSigningKey
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: ConnectionsTable
+      - Statement:
+        - Effect: Allow
+          Action:
+          - execute-api:ManageConnections
+          Resource:
+          - Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DevHiveWebSocketApi}/*
+  WebSocketFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Ref: WebSocketFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DevHiveWebSocketApi}/*
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: DevHiveWebSocketApi
+      RouteKey: $connect
+      AuthorizationType: NONE
+      Target:
+        Fn::Sub: integrations/${ConnectIntegration}
+  ConnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId:
+        Ref: DevHiveWebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketFunction.Arn}/invocations
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: DevHiveWebSocketApi
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      Target:
+        Fn::Sub: integrations/${DisconnectIntegration}
+  DisconnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId:
+        Ref: DevHiveWebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketFunction.Arn}/invocations
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: DevHiveWebSocketApi
+      RouteKey: $default
+      AuthorizationType: NONE
+      Target:
+        Fn::Sub: integrations/${DefaultIntegration}
+  DefaultIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId:
+        Ref: DevHiveWebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketFunction.Arn}/invocations
+  SubscribeRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: DevHiveWebSocketApi
+      RouteKey: subscribe
+      AuthorizationType: NONE
+      Target:
+        Fn::Sub: integrations/${SubscribeIntegration}
+  SubscribeIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId:
+        Ref: DevHiveWebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketFunction.Arn}/invocations
+  UnsubscribeRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: DevHiveWebSocketApi
+      RouteKey: unsubscribe
+      AuthorizationType: NONE
+      Target:
+        Fn::Sub: integrations/${UnsubscribeIntegration}
+  UnsubscribeIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId:
+        Ref: DevHiveWebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketFunction.Arn}/invocations
+  BroadcasterFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+      SamResourceId: BroadcasterFunction
+    Properties:
+      FunctionName: devhive-broadcaster
+      CodeUri: BroadcasterFunction
+      Handler: bootstrap
+      Environment:
+        Variables:
+          CONNECTIONS_TABLE:
+            Ref: ConnectionsTable
+          WEBSOCKET_ENDPOINT:
+            Fn::Sub: https://${DevHiveWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: ConnectionsTable
+      - Statement:
+        - Effect: Allow
+          Action:
+          - execute-api:ManageConnections
+          Resource:
+          - Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DevHiveWebSocketApi}/*
+Outputs:
+  HttpApiEndpoint:
+    Description: HTTP API Gateway endpoint URL
+    Value:
+      Fn::Sub: https://${DevHiveHttpApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+  WebSocketEndpoint:
+    Description: WebSocket API Gateway endpoint URL
+    Value:
+      Fn::Sub: wss://${DevHiveWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+  ConnectionsTableName:
+    Description: DynamoDB table for WebSocket connections
+    Value:
+      Ref: ConnectionsTable
+  HttpApiFunctionArn:
+    Description: HTTP API Lambda function ARN
+    Value:
+      Fn::GetAtt:
+      - DevHiveFunction
+      - Arn
+  WebSocketFunctionArn:
+    Description: WebSocket Lambda function ARN
+    Value:
+      Fn::GetAtt:
+      - WebSocketFunction
+      - Arn
+  BroadcasterFunctionArn:
+    Description: Broadcaster Lambda function ARN
+    Value:
+      Fn::GetAtt:
+      - BroadcasterFunction
+      - Arn

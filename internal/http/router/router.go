@@ -31,7 +31,8 @@ func Setup(cfg *config.Config, queries *repo.Queries, db interface{}, hub *ws.Hu
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.CORS.AllowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
-		AllowedHeaders:   []string{"*"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With", "Origin", "Cookie"},
+		ExposedHeaders:   []string{"Set-Cookie", "X-Request-Id", "Link"},
 		AllowCredentials: cfg.CORS.AllowCredentials,
 		MaxAge:           300,
 	}))

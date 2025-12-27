@@ -3,19 +3,85 @@
 ## Related Documentation
 - [Project Architecture](./project_architecture.md) - Overall system architecture
 - [Database Schema](./database_schema.md) - Cache invalidation triggers
+- [SOP: AWS Deployment](../SOP/aws_deployment.md) - Deploying WebSocket infrastructure
 
 ## Overview
 
-DevHive implements a **real-time notification system** using:
-1. **PostgreSQL NOTIFY/LISTEN** - Database-level change notifications
-2. **WebSocket connections** - Client-server bidirectional communication
-3. **Central Hub** - Message broker routing notifications to clients
+DevHive implements a **real-time notification system** with two deployment modes:
 
-This architecture enables **instant cache invalidation** and **real-time collaboration** without polling.
+### Production (AWS Lambda)
+1. **AWS API Gateway WebSocket API** - Manages WebSocket connections
+2. **DynamoDB** - Stores connection state (connectionId, projectId, userId)
+3. **Broadcaster Lambda** - Pushes messages to connected clients
+4. **HTTP Lambda** - Invokes broadcaster on data changes
+
+### Local Development
+1. **PostgreSQL NOTIFY/LISTEN** - Database-level change notifications
+2. **Gorilla WebSocket** - Direct WebSocket connections
+3. **In-memory Hub** - Central message broker
+
+Both architectures enable **instant cache invalidation** and **real-time collaboration** without polling.
 
 ---
 
-## Architecture Overview
+## AWS Production Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    AWS API Gateway WebSocket API                     │
+│            Custom Domain: wss://ws.devhive.it.com                    │
+│            Direct: wss://er7oc4a3o5.execute-api.../prod              │
+├─────────────────────────────────────────────────────────────────────┤
+│  Routes: $connect | $disconnect | subscribe | unsubscribe | $default │
+└───────────────────────────────────┬─────────────────────────────────┘
+                                    │
+                                    ▼
+                    ┌───────────────────────────────┐
+                    │   devhive-websocket Lambda    │
+                    │   (cmd/websocket/main.go)     │
+                    │   - JWT validation on connect │
+                    │   - Store connection in DDB   │
+                    │   - Handle subscribe/unsub    │
+                    └───────────────────────────────┘
+                                    │
+                                    ▼
+                    ┌───────────────────────────────┐
+                    │      DynamoDB Table           │
+                    │   devhive-ws-connections      │
+                    │   ┌─────────────────────────┐ │
+                    │   │ connectionId (PK)       │ │
+                    │   │ projectId (GSI)         │ │
+                    │   │ userId                  │ │
+                    │   │ connectedAt             │ │
+                    │   │ ttl (24h auto-expire)   │ │
+                    │   └─────────────────────────┘ │
+                    └───────────────────────────────┘
+                                    ▲
+                                    │ Query by projectId
+                                    │
+┌───────────────────┐     invokes   │
+│   devhive-api     │──────────────►│
+│   Lambda          │               │
+│   (HTTP handler)  │    ┌──────────┴──────────────┐
+│   - Creates task  │    │  devhive-broadcaster    │
+│   - Updates data  │    │  Lambda                 │
+│   - Calls Send()  │    │  (cmd/broadcaster/)     │
+└───────────────────┘    │  - Query DDB for conns  │
+                         │  - POST to each client   │
+                         │  - Clean stale conns     │
+                         └─────────────────────────┘
+                                    │
+                                    ▼
+                    ┌───────────────────────────────┐
+                    │   API Gateway Management API   │
+                    │   PostToConnection()           │
+                    │   - Pushes message to client   │
+                    └───────────────────────────────┘
+```
+
+---
+
+## Local Development Architecture
 
 ```
 ┌─────────────────┐
@@ -109,6 +175,7 @@ $$ LANGUAGE plpgsql;
 | `projects` | `projects_cache_invalidate` | INSERT, UPDATE, DELETE |
 | `sprints` | `sprints_cache_invalidate` | INSERT, UPDATE, DELETE |
 | `tasks` | `tasks_cache_invalidate` | INSERT, UPDATE, DELETE |
+| `messages` | `messages_cache_invalidate` | INSERT, UPDATE, DELETE |
 | `project_members` | `project_members_cache_invalidate` | INSERT, UPDATE, DELETE |
 
 ### Notification Payload Format
@@ -409,13 +476,177 @@ func (c *Client) handleMessage(msg Message) {
 
 ---
 
+## AWS WebSocket Components (Production)
+
+The following components are used in the AWS Lambda deployment instead of the local Hub/NOTIFY architecture.
+
+### Component A: WebSocket Lambda Handler
+
+**File:** `cmd/websocket/main.go`
+
+Handles all WebSocket events from API Gateway:
+
+```go
+func handler(ctx context.Context, request events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
+    routeKey := request.RequestContext.RouteKey
+    connectionID := request.RequestContext.ConnectionID
+
+    switch routeKey {
+    case "$connect":
+        return handleConnect(ctx, request)    // Validate JWT, store in DynamoDB
+    case "$disconnect":
+        return handleDisconnect(ctx, connectionID)  // Remove from DynamoDB
+    case "subscribe":
+        return handleSubscribe(ctx, request)   // Update projectId in DynamoDB
+    case "unsubscribe":
+        return handleUnsubscribe(ctx, request) // Clear projectId
+    default:
+        return handleDefault(ctx, request)     // Handle ping/pong
+    }
+}
+```
+
+#### Connection Flow
+
+1. **$connect**: Client connects with `?token=<jwt>` (project_id is optional)
+   - Validates JWT token
+   - Stores connection in DynamoDB with 24h TTL
+   - **Note:** `projectId` uses `omitempty` tag - empty values are not stored (DynamoDB GSI keys cannot be empty strings)
+   - Returns 200 OK or 401 Unauthorized
+
+2. **subscribe**: Client sends `{"action": "subscribe", "project_id": "uuid"}`
+   - Updates connection record with projectId
+   - Enables receiving broadcasts for that project
+
+3. **unsubscribe**: Client sends `{"action": "unsubscribe"}`
+   - Removes projectId from connection record (uses `REMOVE projectId`)
+
+4. **$disconnect**: Client disconnects
+   - Removes connection from DynamoDB
+
+### Component B: Broadcaster Lambda
+
+**File:** `cmd/broadcaster/main.go`
+
+Pushes messages to all clients subscribed to a project:
+
+```go
+func handler(ctx context.Context, event BroadcastEvent) error {
+    // 1. Query DynamoDB for connections with this projectId (using GSI)
+    connections, _ := getProjectConnections(ctx, event.ProjectID)
+
+    // 2. Create API Gateway Management API client
+    apiClient := apigatewaymanagementapi.NewFromConfig(cfg, func(o *apigatewaymanagementapi.Options) {
+        o.BaseEndpoint = aws.String(wsEndpoint)
+    })
+
+    // 3. Send message to each connection
+    for _, conn := range connections {
+        apiClient.PostToConnection(ctx, &apigatewaymanagementapi.PostToConnectionInput{
+            ConnectionId: aws.String(conn.ConnectionID),
+            Data:         payload,
+        })
+    }
+
+    // 4. Clean up stale connections (PostToConnection failures)
+    return nil
+}
+```
+
+### Component C: Broadcast Client
+
+**File:** `internal/broadcast/client.go`
+
+Called by HTTP handlers to trigger broadcasts:
+
+```go
+// In your handler after creating a task:
+broadcast.Send(ctx, task.ProjectID, broadcast.EventTaskCreated, taskData)
+
+// Available event types:
+const (
+    EventTaskCreated     = "task_created"
+    EventTaskUpdated     = "task_updated"
+    EventTaskDeleted     = "task_deleted"
+    EventSprintCreated   = "sprint_created"
+    EventMessageCreated  = "message_created"
+    EventCacheInvalidate = "cache_invalidate"
+)
+```
+
+The `Send()` function invokes the broadcaster Lambda asynchronously (`InvocationType: "Event"`).
+
+### DynamoDB Table Schema
+
+**Table Name:** `devhive-ws-connections`
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `connectionId` | String (PK) | API Gateway connection ID |
+| `projectId` | String (GSI, optional) | Project being subscribed to |
+| `userId` | String | Authenticated user ID |
+| `connectedAt` | String | ISO8601 connection timestamp |
+| `ttl` | Number | Unix timestamp for auto-expiry (24h) |
+
+**Global Secondary Index:** `projectId-index` on `projectId` for efficient queries.
+
+**Important:** The `projectId` attribute uses `omitempty` in the Go struct - when a client connects without subscribing to a project, the attribute is omitted entirely (not stored as empty string). This is required because DynamoDB GSI keys cannot be empty strings.
+
+---
+
 ## Message Flow Example
 
-### Example: User Creates a Task
+### Example: User Creates a Task (AWS Lambda - Production)
 
 1. **API Request:**
    ```
-   POST /api/v1/projects/{projectId}/tasks
+   POST https://xxx.execute-api.us-west-2.amazonaws.com/api/v1/projects/{projectId}/tasks
+   { "title": "New Task", "status": 0 }
+   ```
+
+2. **HTTP Lambda Handler:**
+   ```go
+   // In task handler after successful insert:
+   broadcast.Send(ctx, projectID, broadcast.EventTaskCreated, taskData)
+   ```
+
+3. **Broadcaster Lambda Invoked (async):**
+   ```go
+   // Queries DynamoDB for connections subscribed to this project
+   connections := getProjectConnections(ctx, projectID)
+   ```
+
+4. **API Gateway Management API:**
+   ```go
+   // For each connection, push the message
+   apiClient.PostToConnection(ctx, &PostToConnectionInput{
+       ConnectionId: conn.ConnectionID,
+       Data:         payload,
+   })
+   ```
+
+5. **Clients Receive via WebSocket:**
+   ```json
+   {
+     "type": "task_created",
+     "project_id": "project-uuid",
+     "data": { "id": "task-uuid", "title": "New Task", ... },
+     "timestamp": "2025-12-22T12:00:00Z"
+   }
+   ```
+
+6. **Frontend Handles:**
+   ```typescript
+   // React Query invalidates cache
+   queryClient.invalidateQueries(['tasks', projectId]);
+   // UI re-fetches and updates automatically
+   ```
+
+### Example: User Creates a Task (Local Development)
+
+1. **API Request:**
+   ```
+   POST http://localhost:8080/api/v1/projects/{projectId}/tasks
    { "title": "New Task", "status": 0 }
    ```
 
@@ -424,46 +655,17 @@ func (c *Client) handleMessage(msg Message) {
    INSERT INTO tasks (project_id, title, status) VALUES ($1, $2, $3);
    ```
 
-3. **Trigger Fires:**
+3. **PostgreSQL Trigger Fires:**
    ```sql
-   -- tasks_cache_invalidate trigger fires
-   NOTIFY 'cache_invalidate', '{
-     "resource": "tasks",
-     "id": "new-task-uuid",
-     "action": "INSERT",
-     "project_id": "project-uuid",
-     "timestamp": "2025-12-22T12:00:00Z"
-   }'
+   NOTIFY 'cache_invalidate', '{"resource": "tasks", "action": "INSERT", ...}'
    ```
 
-4. **NOTIFY Listener Receives:**
-   ```go
-   // notify_listener receives notification
-   payload := { resource: "tasks", action: "INSERT", project_id: "..." }
-   ```
-
-5. **Hub Broadcasts:**
+4. **NOTIFY Listener → Hub → Clients:**
    ```go
    hub.BroadcastToProject("project-uuid", "cache_invalidate", payload)
    ```
 
-6. **Clients Receive:**
-   ```json
-   {
-     "type": "cache_invalidate",
-     "resource": "tasks",
-     "action": "INSERT",
-     "project_id": "project-uuid",
-     "data": { ... }
-   }
-   ```
-
-7. **Frontend Handles:**
-   ```typescript
-   // React Query invalidates cache
-   queryClient.invalidateQueries(['tasks', projectId]);
-   // UI re-fetches and updates automatically
-   ```
+5. **Frontend receives and handles as above**
 
 ---
 
@@ -471,16 +673,47 @@ func (c *Client) handleMessage(msg Message) {
 
 ### Connection URL
 
+**Production (AWS) - Custom Domain:**
 ```
-GET ws://localhost:8080/api/v1/messages/ws?token=<jwt>&projectId=<uuid>
+wss://ws.devhive.it.com?token=<jwt>&project_id=<uuid>
+```
+
+**Production (AWS) - Direct API Gateway:**
+```
+wss://er7oc4a3o5.execute-api.us-west-2.amazonaws.com/prod?token=<jwt>&project_id=<uuid>
+```
+
+**Local Development:**
+```
+ws://localhost:8080/api/v1/messages/ws?token=<jwt>&projectId=<uuid>
 ```
 
 **Query Parameters:**
 - `token` - JWT access token for authentication
-- `projectId` - Initial project to subscribe to
+- `project_id` / `projectId` - Initial project to subscribe to
 
 ### Client → Server Messages
 
+**AWS WebSocket API (uses `action` field for routing):**
+```json
+// Subscribe to a project
+{
+  "action": "subscribe",
+  "project_id": "uuid-here"
+}
+
+// Unsubscribe from project
+{
+  "action": "unsubscribe"
+}
+
+// Ping for keepalive
+{
+  "action": "ping"
+}
+```
+
+**Local Development (uses `type` field):**
 ```json
 // Join a project
 {

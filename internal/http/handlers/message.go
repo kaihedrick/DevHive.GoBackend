@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"devhive-backend/internal/broadcast"
 	"devhive-backend/internal/config"
 	"devhive-backend/internal/http/middleware"
 	"devhive-backend/internal/http/response"
@@ -249,7 +250,10 @@ func (h *MessageHandler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusCreated, MessageResponse{
+	// Get sender details for full response
+	sender, _ := h.queries.GetUserByID(r.Context(), userUUID2)
+
+	messageResp := MessageResponse{
 		ID:          message.ID.String(),
 		ProjectID:   message.ProjectID.String(),
 		SenderID:    message.SenderID.String(),
@@ -257,7 +261,30 @@ func (h *MessageHandler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 		MessageType: message.MessageType,
 		CreatedAt:   message.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:   message.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	})
+	}
+
+	if sender.ID != uuid.Nil {
+		avatarURL := ""
+		if sender.AvatarUrl != nil {
+			avatarURL = *sender.AvatarUrl
+		}
+		messageResp.Sender = struct {
+			Username  string `json:"username"`
+			FirstName string `json:"firstName"`
+			LastName  string `json:"lastName"`
+			AvatarURL string `json:"avatarUrl,omitempty"`
+		}{
+			Username:  sender.Username,
+			FirstName: sender.FirstName,
+			LastName:  sender.LastName,
+			AvatarURL: avatarURL,
+		}
+	}
+
+	// Broadcast message created event
+	broadcast.Send(r.Context(), projectID, broadcast.EventMessageCreated, messageResp)
+
+	response.JSON(w, http.StatusCreated, messageResp)
 }
 
 // ListMessages handles listing messages with filters
@@ -396,18 +423,24 @@ var upgrader = websocket.Upgrader{
 
 // WebSocketHandler handles WebSocket connections for real-time messaging and cache invalidation
 func (h *MessageHandler) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
+	// Check if hub is available (nil when running in Lambda/serverless)
+	if h.hub == nil {
+		http.Error(w, "WebSocket connections are not supported in this deployment. Use API Gateway WebSocket API for real-time features.", http.StatusServiceUnavailable)
+		return
+	}
+
 	// Extract JWT token from multiple sources (in order of preference):
 	// 1. Authorization header (most secure)
 	// 2. Cookie (secure, httpOnly)
 	// 3. Query param (fallback, less secure - for debugging/backward compatibility)
 	var token string
-	
+
 	// Try Authorization header first
 	authHeader := r.Header.Get("Authorization")
 	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
 		token = authHeader[7:]
 	}
-	
+
 	// Fallback to cookie if header not present
 	if token == "" {
 		cookie, err := r.Cookie("access_token")
@@ -415,7 +448,7 @@ func (h *MessageHandler) WebSocketHandler(w http.ResponseWriter, r *http.Request
 			token = cookie.Value
 		}
 	}
-	
+
 	// Fallback to query param (for backward compatibility, but should be deprecated)
 	if token == "" {
 		token = r.URL.Query().Get("token")
@@ -539,13 +572,22 @@ func (h *MessageHandler) WebSocketHandler(w http.ResponseWriter, r *http.Request
 	// Handler returns here - connection is managed by ReadPump/WritePump
 	go client.ReadPump()
 	go client.WritePump()
-	
+
 	// Handler returns immediately - connection lifecycle is managed by ReadPump/WritePump goroutines
 	// This is correct: we don't want to block the HTTP handler
 }
 
 // GetWebSocketStatus returns connection status for debugging
 func (h *MessageHandler) GetWebSocketStatus(w http.ResponseWriter, r *http.Request) {
+	// Check if hub is available (nil when running in Lambda/serverless)
+	if h.hub == nil {
+		response.JSON(w, http.StatusOK, map[string]interface{}{
+			"status":  "unavailable",
+			"message": "WebSocket is not available in serverless deployment",
+		})
+		return
+	}
+
 	projectID := chi.URLParam(r, "projectId")
 	if projectID == "" {
 		response.BadRequest(w, "Project ID required")

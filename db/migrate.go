@@ -174,7 +174,7 @@ func VerifyNotifyTriggers(db *sql.DB) error {
 	log.Println("✅ NOTIFY function 'notify_cache_invalidation' exists")
 	
 	// Check triggers on each table
-	tables := []string{"projects", "sprints", "tasks", "project_members"}
+	tables := []string{"projects", "sprints", "tasks", "messages", "project_members"}
 	allTriggersExist := true
 	
 	for _, table := range tables {

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"devhive-backend/internal/broadcast"
 	"devhive-backend/internal/http/middleware"
 	"devhive-backend/internal/http/response"
 	"devhive-backend/internal/repo"
@@ -462,14 +463,19 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, ProjectResponse{
+	projectResp := ProjectResponse{
 		ID:          project.ID.String(),
 		OwnerID:     project.OwnerID.String(),
 		Name:        project.Name,
 		Description: *project.Description,
 		CreatedAt:   project.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:   project.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	})
+	}
+
+	// Broadcast project updated event
+	broadcast.Send(r.Context(), projectID, broadcast.EventProjectUpdated, projectResp)
+
+	response.JSON(w, http.StatusOK, projectResp)
 }
 
 // DeleteProject handles project deletion
@@ -566,6 +572,13 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Broadcast member added event
+	broadcast.Send(r.Context(), projectID, broadcast.EventMemberAdded, map[string]string{
+		"userId":    memberID,
+		"projectId": projectID,
+		"role":      role,
+	})
+
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Member added successfully"})
 }
 
@@ -616,6 +629,12 @@ func (h *ProjectHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "Failed to remove member: "+err.Error())
 		return
 	}
+
+	// Broadcast member removed event
+	broadcast.Send(r.Context(), projectID, broadcast.EventMemberRemoved, map[string]string{
+		"userId":    memberID,
+		"projectId": projectID,
+	})
 
 	log.Printf("RemoveMember: Successfully removed user %s from project %s", memberUUID.String(), projectUUID.String())
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Member removed successfully"})
@@ -788,6 +807,13 @@ func (h *ProjectHandler) JoinProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Broadcast member added event
+	broadcast.Send(r.Context(), req.ProjectID, broadcast.EventMemberAdded, map[string]string{
+		"userId":    userID,
+		"projectId": req.ProjectID,
+		"role":      "member",
+	})
+
 	// Get the project to return
 	project, err := h.queries.GetProjectByID(r.Context(), projectUUID)
 	if err != nil {
@@ -927,7 +953,13 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("AcceptInvite: ✅ Database INSERT/UPDATE completed for user %s in project %s", userUUID.String(), invite.ProjectID.String())
-	log.Printf("AcceptInvite: ⚠️  If NOTIFY listener is running, you should see '🔔 RAW NOTIFY received' logs within 1 second")
+
+	// Broadcast member added event
+	broadcast.Send(r.Context(), invite.ProjectID.String(), broadcast.EventMemberAdded, map[string]string{
+		"userId":    userID,
+		"projectId": invite.ProjectID.String(),
+		"role":      "member",
+	})
 
 	// Increment invite use count
 	err = h.queries.IncrementInviteUseCount(r.Context(), invite.ID)

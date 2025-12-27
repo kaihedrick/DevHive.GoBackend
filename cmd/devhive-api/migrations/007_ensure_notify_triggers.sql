@@ -18,6 +18,8 @@ BEGIN
     project_uuid := COALESCE(NEW.project_id, OLD.project_id);
   ELSIF TG_TABLE_NAME = 'tasks' THEN
     project_uuid := COALESCE(NEW.project_id, OLD.project_id);
+  ELSIF TG_TABLE_NAME = 'messages' THEN
+    project_uuid := COALESCE(NEW.project_id, OLD.project_id);
   ELSIF TG_TABLE_NAME = 'project_members' THEN
     project_uuid := COALESCE(NEW.project_id, OLD.project_id);
   ELSE
@@ -33,13 +35,15 @@ BEGIN
   END IF;
   
   -- Normalize resource name to singular for frontend consistency
-  -- Frontend expects: 'project', 'sprint', 'task', 'project_members'
+  -- Frontend expects: 'project', 'sprint', 'task', 'message', 'project_members'
   IF TG_TABLE_NAME = 'projects' THEN
     resource_name := 'project';
   ELSIF TG_TABLE_NAME = 'sprints' THEN
     resource_name := 'sprint';
   ELSIF TG_TABLE_NAME = 'tasks' THEN
     resource_name := 'task';
+  ELSIF TG_TABLE_NAME = 'messages' THEN
+    resource_name := 'message';
   ELSIF TG_TABLE_NAME = 'project_members' THEN
     resource_name := 'project_members'; -- Keep plural for consistency
   ELSE
@@ -84,5 +88,11 @@ CREATE TRIGGER tasks_cache_invalidate
 DROP TRIGGER IF EXISTS project_members_cache_invalidate ON project_members;
 CREATE TRIGGER project_members_cache_invalidate
   AFTER INSERT OR UPDATE OR DELETE ON project_members
+  FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidation();
+
+-- Create triggers for messages table (idempotent)
+DROP TRIGGER IF EXISTS messages_cache_invalidate ON messages;
+CREATE TRIGGER messages_cache_invalidate
+  AFTER INSERT OR UPDATE OR DELETE ON messages
   FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidation();
 

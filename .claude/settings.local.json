@@ -1,7 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(\"C:\\\\Program Files\\\\Amazon\\\\AWSSAMCLI\\\\bin\\\\sam.cmd\" build --profile devhive)",
+      "Bash(\"C:\\\\Program Files\\\\Amazon\\\\AWSSAMCLI\\\\bin\\\\sam.cmd\" deploy --profile devhive --parameter-overrides \"DatabaseURL=postgresql://neondb_owner:npg_EoarkRfZM5t2@ep-shy-waterfall-aflt9iog-pooler.c-2.us-west-2.aws.neon.tech/neondb?sslmode=require\" \"JWTSigningKey=jz9++IpkpJwW0zTwDEmC/ReDuNvgeqqP3P10Wf3HxYQ=\" \"GoogleClientID=86732526103-05v4v5pogv4377fhherc76mls9g96t9a.apps.googleusercontent.com\" \"GoogleClientSecret=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\" \"AdminPassword=UhDAdbQrFL0GW24D5D/5xMAAFDGZOqWNfDgPXjuM2QY=\" \"ResendAPIKey=re_eBYua3ws_4Lzq6aRne53rQxjM2mNvtDjN\" \"ResendFromEmail=noreply@devhive.it.com\" \"CORSOrigins=http://localhost:3000,http://localhost:5173,https://devhive.it.com\" \"FrontendURL=https://devhive.it.com\" \"GoogleRedirectURL=https://devhive-api.execute-api.us-west-2.amazonaws.com/prod/api/v1/auth/google/callback\")",
+      "Bash(curl:*)",
+      "Bash(aws logs tail:*)",
+      "Bash(go build:*)",
+      "Bash(go doc:*)",
+      "Bash(go get:*)",
+      "Bash(\"C:\\\\Program Files\\\\Amazon\\\\AWSSAMCLI\\\\bin\\\\sam.cmd\" deploy --profile devhive --parameter-overrides \"DatabaseURL=postgresql://neondb_owner:npg_EoarkRfZM5t2@ep-shy-waterfall-aflt9iog-pooler.c-2.us-west-2.aws.neon.tech/neondb?sslmode=require\" \"JWTSigningKey=jz9++IpkpJwW0zTwDEmC/ReDuNvgeqqP3P10Wf3HxYQ=\" \"GoogleClientID=86732526103-05v4v5pogv4377fhherc76mls9g96t9a.apps.googleusercontent.com\" \"GoogleClientSecret=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\" \"AdminPassword=UhDAdbQrFL0GW24D5D/5xMAAFDGZOqWNfDgPXjuM2QY=\" \"ResendAPIKey=re_eBYua3ws_4Lzq6aRne53rQxjM2mNvtDjN\" \"ResendFromEmail=noreply@devhive.it.com\" \"CORSOrigins=http://localhost:3000,http://localhost:5173,https://devhive.it.com\" \"FrontendURL=https://devhive.it.com\" \"GoogleRedirectURL=https://7x1vij0u6k.execute-api.us-west-2.amazonaws.com/prod/api/v1/auth/google/callback\")",
+      "Bash(powershell -Command:*)",
+      "Bash(\"C:\\\\Program Files\\\\Amazon\\\\AWSSAMCLI\\\\bin\\\\sam.cmd\" deploy --profile devhive --parameter-overrides \"DatabaseURL=postgresql://neondb_owner:npg_EoarkRfZM5t2@ep-shy-waterfall-aflt9iog-pooler.c-2.us-west-2.aws.neon.tech/neondb?sslmode=require\" \"JWTSigningKey=jz9++IpkpJwW0zTwDEmC/ReDuNvgeqqP3P10Wf3HxYQ=\" \"GoogleClientID=86732526103-05v4v5pogv4377fhherc76mls9g96t9a.apps.googleusercontent.com\" \"GoogleClientSecret=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\" \"AdminPassword=UhDAdbQrFL0GW24D5D/5xMAAFDGZOqWNfDgPXjuM2QY=\" \"ResendAPIKey=re_eBYua3ws_4Lzq6aRne53rQxjM2mNvtDjN\" \"ResendFromEmail=noreply@devhive.it.com\" \"CORSOrigins=http://localhost:3000,http://localhost:5173,https://devhive.it.com\" \"FrontendURL=https://devhive.it.com\" \"GoogleRedirectURL=https://7x1vij0u6k.execute-api.us-west-2.amazonaws.com/api/v1/auth/google/callback\")",
+      "Bash(\"C:\\\\Program Files\\\\Amazon\\\\AWSSAMCLI\\\\bin\\\\sam.cmd\" deploy --profile devhive --parameter-overrides \"DatabaseURL=postgresql://neondb_owner:npg_EoarkRfZM5t2@ep-shy-waterfall-aflt9iog-pooler.c-2.us-west-2.aws.neon.tech/neondb?sslmode=require\" \"JWTSigningKey=jz9++IpkpJwW0zTwDEmC/ReDuNvgeqqP3P10Wf3HxYQ=\" \"GoogleClientID=86732526103-05v4v5pogv4377fhherc76mls9g96t9a.apps.googleusercontent.com\" \"GoogleClientSecret=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\" \"AdminPassword=UhDAdbQrFL0GW24D5D/5xMAAFDGZOqWNfDgPXjuM2QY=\" \"ResendAPIKey=re_eBYua3ws_4Lzq6aRne53rQxjM2mNvtDjN\" \"ResendFromEmail=noreply@devhive.it.com\" \"CORSOrigins=http://localhost:3000,http://localhost:5173,https://devhive.it.com,https://go.devhive.it.com\" \"FrontendURL=https://devhive.it.com\" \"GoogleRedirectURL=https://7x1vij0u6k.execute-api.us-west-2.amazonaws.com/api/v1/auth/google/callback\")"
     ]
   }
 }

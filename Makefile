@@ -1,4 +1,4 @@
-.PHONY: help build run test clean deps fmt fmt-check lint security docker-build docker-run dev-setup prod-build gen db-up db-down ci vet test-coverage
+.PHONY: help build run test clean deps fmt fmt-check lint security docker-build docker-run dev-setup prod-build gen db-up db-down ci vet test-coverage build-lambda deploy-lambda login-aws sam-build sam-deploy sam-local
 
 # Variables
 BINARY_NAME=devhive-api
@@ -35,6 +35,16 @@ help:
 	@echo "  prod-build    - Build for production"
 	@echo "  docker-build  - Build Docker image"
 	@echo "  docker-run    - Run with Docker Compose"
+	@echo ""
+	@echo "AWS Lambda Deployment:"
+	@echo "  login-aws       - Login to AWS with SSO (opens browser)"
+	@echo "  build-lambda    - Build Lambda binary"
+	@echo "  sam-build       - Build with AWS SAM"
+	@echo "  sam-deploy      - Deploy to AWS (guided)"
+	@echo "  sam-deploy-quick - Deploy without prompts"
+	@echo "  sam-local       - Run Lambda locally"
+	@echo "  sam-logs        - View Lambda logs"
+	@echo "  sam-delete      - Delete AWS stack"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  deps         - Download and tidy dependencies"
@@ -186,3 +196,61 @@ lint:
 	@echo "🔍 Linting code..."
 	golangci-lint run --timeout=5m --build-tags=postgres,prod
 	@echo "✅ Linting complete"
+
+# ==================== AWS Lambda Deployment ====================
+
+## login-aws: Login to AWS with SSO (opens browser)
+login-aws:
+	@echo "🔐 Logging in to AWS SSO..."
+	aws sso login
+	@echo "✅ AWS SSO login complete"
+
+## build-lambda: Build Lambda binary for Amazon Linux 2023
+build-lambda:
+	@echo "🔨 Building Lambda binary..."
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags lambda.norpc -ldflags="-w -s" -o bootstrap ./cmd/lambda
+	zip -j function.zip bootstrap
+	rm bootstrap
+	@echo "✅ Lambda build complete: function.zip"
+
+## sam-build: Build using AWS SAM
+sam-build:
+	@echo "🔨 Building with SAM..."
+	sam build
+	@echo "✅ SAM build complete"
+
+## sam-deploy: Deploy to AWS using SAM (first time - guided)
+sam-deploy: sam-build
+	@echo "🚀 Deploying to AWS..."
+	sam deploy --guided
+	@echo "✅ Deployment complete"
+
+## sam-deploy-quick: Deploy without prompts (after first deploy)
+sam-deploy-quick: sam-build
+	@echo "🚀 Deploying to AWS..."
+	sam deploy
+	@echo "✅ Deployment complete"
+
+## sam-local: Run Lambda locally with SAM
+sam-local: sam-build
+	@echo "🚀 Starting local Lambda server..."
+	sam local start-api
+
+## sam-logs: View Lambda logs
+sam-logs:
+	@echo "📜 Fetching Lambda logs..."
+	sam logs -n DevHiveFunction --tail
+
+## sam-delete: Delete the CloudFormation stack
+sam-delete:
+	@echo "🗑️  Deleting AWS stack..."
+	sam delete
+	@echo "✅ Stack deleted"
+
+## deploy-lambda: Direct Lambda deployment (without SAM)
+deploy-lambda: build-lambda
+	@echo "🚀 Deploying to Lambda..."
+	aws lambda update-function-code \
+		--function-name devhive-api \
+		--zip-file fileb://function.zip
+	@echo "✅ Lambda deployment complete"

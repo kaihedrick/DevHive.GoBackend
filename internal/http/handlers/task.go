@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"devhive-backend/internal/broadcast"
 	"devhive-backend/internal/http/middleware"
 	"devhive-backend/internal/http/response"
 	"devhive-backend/internal/repo"
@@ -424,6 +425,10 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	// Build complete TaskResponse with Assignee object
 	taskResp := buildTaskResponse(fullTask)
+
+	// Broadcast task created event
+	broadcast.Send(r.Context(), projectID, broadcast.EventTaskCreated, taskResp)
+
 	response.JSON(w, http.StatusCreated, taskResp)
 }
 
@@ -612,6 +617,10 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 
 	// Build complete TaskResponse
 	taskResp := buildTaskResponse(fullTask)
+
+	// Broadcast task updated event
+	broadcast.Send(r.Context(), fullTask.ProjectID.String(), broadcast.EventTaskUpdated, taskResp)
+
 	response.JSON(w, http.StatusOK, taskResp)
 }
 
@@ -679,6 +688,10 @@ func (h *TaskHandler) UpdateTaskStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Build complete TaskResponse
 	taskResp := buildTaskResponse(fullTask)
+
+	// Broadcast task status updated event
+	broadcast.Send(r.Context(), fullTask.ProjectID.String(), broadcast.EventTaskUpdated, taskResp)
+
 	response.JSON(w, http.StatusOK, taskResp)
 }
 
@@ -728,6 +741,12 @@ func (h *TaskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 		response.InternalServerError(w, "Failed to delete task")
 		return
 	}
+
+	// Broadcast task deleted event
+	broadcast.Send(r.Context(), currentTask.ProjectID.String(), broadcast.EventTaskDeleted, map[string]string{
+		"id":        taskID,
+		"projectId": currentTask.ProjectID.String(),
+	})
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Task deleted successfully"})
 }

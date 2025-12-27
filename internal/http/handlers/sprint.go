@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"devhive-backend/internal/broadcast"
 	"devhive-backend/internal/http/middleware"
 	"devhive-backend/internal/http/response"
 	"devhive-backend/internal/repo"
@@ -274,7 +275,7 @@ func (h *SprintHandler) CreateSprint(w http.ResponseWriter, r *http.Request) {
 		descriptionResp = *fullSprint.Description
 	}
 
-	response.JSON(w, http.StatusCreated, SprintResponse{
+	sprintResp := SprintResponse{
 		ID:          fullSprint.ID.String(),
 		ProjectID:   fullSprint.ProjectID.String(),
 		Name:        fullSprint.Name,
@@ -292,7 +293,12 @@ func (h *SprintHandler) CreateSprint(w http.ResponseWriter, r *http.Request) {
 			FirstName: fullSprint.OwnerFirstName,
 			LastName:  fullSprint.OwnerLastName,
 		},
-	})
+	}
+
+	// Broadcast sprint created event
+	broadcast.Send(r.Context(), projectID, broadcast.EventSprintCreated, sprintResp)
+
+	response.JSON(w, http.StatusCreated, sprintResp)
 }
 
 // GetSprint handles getting a sprint by ID
@@ -460,7 +466,7 @@ func (h *SprintHandler) UpdateSprint(w http.ResponseWriter, r *http.Request) {
 		descriptionResp = *fullSprint.Description
 	}
 
-	response.JSON(w, http.StatusOK, SprintResponse{
+	sprintResp := SprintResponse{
 		ID:          fullSprint.ID.String(),
 		ProjectID:   fullSprint.ProjectID.String(),
 		Name:        fullSprint.Name,
@@ -478,7 +484,12 @@ func (h *SprintHandler) UpdateSprint(w http.ResponseWriter, r *http.Request) {
 			FirstName: fullSprint.OwnerFirstName,
 			LastName:  fullSprint.OwnerLastName,
 		},
-	})
+	}
+
+	// Broadcast sprint updated event
+	broadcast.Send(r.Context(), fullSprint.ProjectID.String(), broadcast.EventSprintUpdated, sprintResp)
+
+	response.JSON(w, http.StatusOK, sprintResp)
 }
 
 // DeleteSprint handles sprint deletion
@@ -527,6 +538,12 @@ func (h *SprintHandler) DeleteSprint(w http.ResponseWriter, r *http.Request) {
 		response.InternalServerError(w, "Failed to delete sprint")
 		return
 	}
+
+	// Broadcast sprint deleted event
+	broadcast.Send(r.Context(), currentSprint.ProjectID.String(), broadcast.EventSprintDeleted, map[string]string{
+		"id":        sprintID,
+		"projectId": currentSprint.ProjectID.String(),
+	})
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Sprint deleted successfully"})
 }
@@ -601,7 +618,7 @@ func (h *SprintHandler) UpdateSprintStatus(w http.ResponseWriter, r *http.Reques
 		descriptionResp = *fullSprint.Description
 	}
 
-	response.JSON(w, http.StatusOK, SprintResponse{
+	sprintResp := SprintResponse{
 		ID:          fullSprint.ID.String(),
 		ProjectID:   fullSprint.ProjectID.String(),
 		Name:        fullSprint.Name,
@@ -619,5 +636,10 @@ func (h *SprintHandler) UpdateSprintStatus(w http.ResponseWriter, r *http.Reques
 			FirstName: fullSprint.OwnerFirstName,
 			LastName:  fullSprint.OwnerLastName,
 		},
-	})
+	}
+
+	// Broadcast sprint status updated event
+	broadcast.Send(r.Context(), fullSprint.ProjectID.String(), broadcast.EventSprintUpdated, sprintResp)
+
+	response.JSON(w, http.StatusOK, sprintResp)
 }

@@ -38,11 +38,10 @@ type CORSConfig struct {
 	AllowCredentials bool
 }
 
-// MailConfig holds mail service configuration
+// MailConfig holds mail service configuration (Resend)
 type MailConfig struct {
-	APIKey string
-	Domain string
-	Sender string
+	APIKey    string
+	FromEmail string
 }
 
 // GoogleOAuthConfig holds Google OAuth 2.0 configuration
@@ -72,14 +71,13 @@ func Load() (*Config, error) {
 			RefreshTokenSessionExpiration:    time.Duration(getEnvAsInt("JWT_REFRESH_EXPIRATION_SESSION_HOURS", 0)) * time.Hour,                         // Session: 0 = browser session
 		},
 		CORS: CORSConfig{
-			AllowedOrigins:   getEnvSlice("CORS_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173", "http://localhost:8080", "https://d35scdhidypl44.cloudfront.net", "https://devhive.it.com"}),
+			AllowedOrigins:   getEnvSlice("CORS_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173", "http://localhost:8080", "https://d35scdhidypl44.cloudfront.net", "https://devhive.it.com", "https://go.devhive.it.com"}),
 			AllowCredentials: getEnvAsBool("CORS_ALLOW_CREDENTIALS", true),
 		},
 		AdminPassword: getEnv("ADMIN_CERTIFICATES_PASSWORD", "jtAppmine2021"),
 		Mail: MailConfig{
-			APIKey: getEnv("MAILGUN_API_KEY", ""),
-			Domain: getEnv("MAILGUN_DOMAIN", ""),
-			Sender: getEnv("MAILGUN_SENDER", ""),
+			APIKey:    getEnv("RESEND_API_KEY", ""),
+			FromEmail: getEnv("RESEND_FROM_EMAIL", "noreply@devhive.it.com"),
 		},
 		GoogleOAuth: GoogleOAuthConfig{
 			ClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
