@@ -37,9 +37,10 @@ type Connection struct {
 
 // WebSocketMessage represents an incoming WebSocket message
 type WebSocketMessage struct {
-	Action    string          `json:"action"`
-	ProjectID string          `json:"projectId,omitempty"`
-	Data      json.RawMessage `json:"data,omitempty"`
+	Action       string          `json:"action"`
+	ProjectID    string          `json:"projectId,omitempty"`
+	ProjectIdAlt string          `json:"project_id,omitempty"` // Backward compatibility
+	Data         json.RawMessage `json:"data,omitempty"`
 }
 
 // BroadcastMessage represents a message to broadcast to clients
@@ -166,7 +167,13 @@ func handleSubscribe(ctx context.Context, request events.APIGatewayWebsocketProx
 		return events.APIGatewayProxyResponse{StatusCode: 400, Body: "Invalid message format"}, nil
 	}
 
-	if msg.ProjectID == "" {
+	// Support both projectId and project_id for backward compatibility
+	projectID := msg.ProjectID
+	if projectID == "" {
+		projectID = msg.ProjectIdAlt
+	}
+
+	if projectID == "" {
 		return events.APIGatewayProxyResponse{StatusCode: 400, Body: "project_id required"}, nil
 	}
 
@@ -178,7 +185,7 @@ func handleSubscribe(ctx context.Context, request events.APIGatewayWebsocketProx
 		},
 		UpdateExpression: aws.String("SET projectId = :pid"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pid": &types.AttributeValueMemberS{Value: msg.ProjectID},
+			":pid": &types.AttributeValueMemberS{Value: projectID},
 		},
 	})
 	if err != nil {
@@ -186,7 +193,7 @@ func handleSubscribe(ctx context.Context, request events.APIGatewayWebsocketProx
 		return events.APIGatewayProxyResponse{StatusCode: 500, Body: "Internal error"}, nil
 	}
 
-	log.Printf("Subscribed to project: connectionId=%s, projectId=%s", connectionID, msg.ProjectID)
+	log.Printf("Subscribed to project: connectionId=%s, projectId=%s", connectionID, projectID)
 	return events.APIGatewayProxyResponse{StatusCode: 200, Body: "Subscribed"}, nil
 }
 

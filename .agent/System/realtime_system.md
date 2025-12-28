@@ -710,6 +710,13 @@ ws://localhost:8080/api/v1/messages/ws?token=<jwt>&projectId=<uuid>
 **AWS WebSocket API (uses `action` field for routing):**
 ```json
 // Subscribe to a project
+// Accepts both "projectId" (recommended) and "project_id" (backward compatibility)
+{
+  "action": "subscribe",
+  "projectId": "uuid-here"
+}
+
+// Or using snake_case (backward compatible)
 {
   "action": "subscribe",
   "project_id": "uuid-here"

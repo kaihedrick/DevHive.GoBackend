@@ -230,12 +230,12 @@ func (h *MigrationHandler) TestNotifyTrigger(w http.ResponseWriter, r *http.Requ
 		CROSS JOIN users u 
 		LIMIT 1
 	`).Scan(&projectID, &userID)
-	
+
 	if err != nil {
 		response.InternalServerError(w, fmt.Sprintf("Failed to get test IDs: %v. Make sure you have at least one project and one user.", err))
 		return
 	}
-	
+
 	// Insert a test row (this should trigger NOTIFY)
 	// Use ON CONFLICT to handle if the member already exists
 	_, err = h.db.Exec(`
@@ -243,28 +243,28 @@ func (h *MigrationHandler) TestNotifyTrigger(w http.ResponseWriter, r *http.Requ
 		VALUES ($1::uuid, $2::uuid, 'member')
 		ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'member'
 	`, projectID, userID)
-	
+
 	if err != nil {
 		response.InternalServerError(w, fmt.Sprintf("Failed to insert test row: %v", err))
 		return
 	}
-	
+
 	// Delete the test row (this should also trigger NOTIFY)
 	_, err = h.db.Exec(`
 		DELETE FROM project_members 
 		WHERE project_id = $1::uuid AND user_id = $2::uuid
 	`, projectID, userID)
-	
+
 	if err != nil {
 		response.InternalServerError(w, fmt.Sprintf("Failed to delete test row: %v", err))
 		return
 	}
-	
+
 	response.JSON(w, http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "Test NOTIFY trigger executed. Check logs for '🔔 RAW NOTIFY received' messages.",
+		"success":   true,
+		"message":   "Test NOTIFY trigger executed. Check logs for '🔔 RAW NOTIFY received' messages.",
 		"projectId": projectID,
-		"userId": userID,
-		"note": "If you see this but no NOTIFY logs, the trigger may not be installed or firing.",
+		"userId":    userID,
+		"note":      "If you see this but no NOTIFY logs, the trigger may not be installed or firing.",
 	})
 }

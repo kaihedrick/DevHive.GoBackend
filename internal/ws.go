@@ -37,8 +37,8 @@ type Hub struct {
 // Message represents a WebSocket message
 type Message struct {
 	Type      string      `json:"type"`
-	Resource  string      `json:"resource,omitempty"`  // Resource type: project, sprint, task, project_member
-	Action    string      `json:"action,omitempty"`    // Action: INSERT, UPDATE, DELETE
+	Resource  string      `json:"resource,omitempty"` // Resource type: project, sprint, task, project_member
+	Action    string      `json:"action,omitempty"`   // Action: INSERT, UPDATE, DELETE
 	Data      interface{} `json:"data"`
 	ProjectID string      `json:"projectId,omitempty"`
 	UserID    string      `json:"userId,omitempty"`
@@ -47,10 +47,10 @@ type Message struct {
 // NewHub creates a new WebSocket hub
 func NewHub() *Hub {
 	return &Hub{
-	clients:    make(map[*Client]bool),
-	broadcast:  make(chan []byte),
-	Register:   make(chan *Client),
-	unregister: make(chan *Client),
+		clients:    make(map[*Client]bool),
+		broadcast:  make(chan []byte),
+		Register:   make(chan *Client),
+		unregister: make(chan *Client),
 	}
 }
 

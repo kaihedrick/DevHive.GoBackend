@@ -103,15 +103,15 @@ func (c *Client) Send(ctx context.Context, projectID, eventType string, data int
 
 // Common event types
 const (
-	EventTaskCreated       = "task_created"
-	EventTaskUpdated       = "task_updated"
-	EventTaskDeleted       = "task_deleted"
-	EventSprintCreated     = "sprint_created"
-	EventSprintUpdated     = "sprint_updated"
-	EventSprintDeleted     = "sprint_deleted"
-	EventMessageCreated    = "message_created"
-	EventProjectUpdated    = "project_updated"
-	EventMemberAdded       = "member_added"
-	EventMemberRemoved     = "member_removed"
-	EventCacheInvalidate   = "cache_invalidate"
+	EventTaskCreated     = "task_created"
+	EventTaskUpdated     = "task_updated"
+	EventTaskDeleted     = "task_deleted"
+	EventSprintCreated   = "sprint_created"
+	EventSprintUpdated   = "sprint_updated"
+	EventSprintDeleted   = "sprint_deleted"
+	EventMessageCreated  = "message_created"
+	EventProjectUpdated  = "project_updated"
+	EventMemberAdded     = "member_added"
+	EventMemberRemoved   = "member_removed"
+	EventCacheInvalidate = "cache_invalidate"
 )

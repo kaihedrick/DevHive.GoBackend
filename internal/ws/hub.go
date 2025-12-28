@@ -30,8 +30,8 @@ type Hub struct {
 // Message represents a WebSocket message
 type Message struct {
 	Type      string      `json:"type"`
-	Resource  string      `json:"resource,omitempty"`  // Resource type: project, sprint, task, project_member
-	Action    string      `json:"action,omitempty"`    // Action: INSERT, UPDATE, DELETE
+	Resource  string      `json:"resource,omitempty"` // Resource type: project, sprint, task, project_member
+	Action    string      `json:"action,omitempty"`   // Action: INSERT, UPDATE, DELETE
 	Data      interface{} `json:"data"`
 	ProjectID string      `json:"projectId,omitempty"`
 	UserID    string      `json:"userId,omitempty"`

@@ -431,7 +431,7 @@ fly logs
 **WebSocket Connection:**
 - Single endpoint for both cache invalidation and real-time messaging
 - Connect: `wss://ws.devhive.it.com?token=<jwt>`
-- Subscribe: Send `{"action": "subscribe", "project_id": "<uuid>"}`
+- Subscribe: Send `{"action": "subscribe", "projectId": "<uuid>"}` (or `"project_id"` for backward compatibility)
 - Events received: `task_created`, `task_updated`, `sprint_created`, `message_created`, etc.
 
 ---

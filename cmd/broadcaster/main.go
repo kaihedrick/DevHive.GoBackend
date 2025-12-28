@@ -17,17 +17,17 @@ import (
 )
 
 var (
-	dynamoClient    *dynamodb.Client
-	tableName       string
-	wsEndpoint      string
+	dynamoClient *dynamodb.Client
+	tableName    string
+	wsEndpoint   string
 )
 
 // BroadcastEvent is the event received by this Lambda
 type BroadcastEvent struct {
-	ProjectID string      `json:"projectId"`
-	Type      string      `json:"type"` // e.g., "task_created", "message_created", "cache_invalidate"
-	Data      interface{} `json:"data"`
-	ExcludeConnectionID string `json:"exclude_connection_id,omitempty"` // Don't send to this connection
+	ProjectID           string      `json:"projectId"`
+	Type                string      `json:"type"` // e.g., "task_created", "message_created", "cache_invalidate"
+	Data                interface{} `json:"data"`
+	ExcludeConnectionID string      `json:"exclude_connection_id,omitempty"` // Don't send to this connection
 }
 
 // Connection represents a WebSocket connection from DynamoDB
