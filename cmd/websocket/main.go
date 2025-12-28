@@ -38,14 +38,14 @@ type Connection struct {
 // WebSocketMessage represents an incoming WebSocket message
 type WebSocketMessage struct {
 	Action    string          `json:"action"`
-	ProjectID string          `json:"project_id,omitempty"`
+	ProjectID string          `json:"projectId,omitempty"`
 	Data      json.RawMessage `json:"data,omitempty"`
 }
 
 // BroadcastMessage represents a message to broadcast to clients
 type BroadcastMessage struct {
 	Type      string      `json:"type"`
-	ProjectID string      `json:"project_id"`
+	ProjectID string      `json:"projectId"`
 	Data      interface{} `json:"data"`
 	Timestamp string      `json:"timestamp"`
 }
@@ -108,7 +108,11 @@ func handleConnect(ctx context.Context, request events.APIGatewayWebsocketProxyR
 	}
 
 	// Get project ID from query string (optional at connect time)
-	projectID := request.QueryStringParameters["project_id"]
+	projectID := request.QueryStringParameters["projectId"]
+	if projectID == "" {
+		// Fallback to project_id for backward compatibility
+		projectID = request.QueryStringParameters["project_id"]
+	}
 
 	// Store connection in DynamoDB
 	conn := Connection{

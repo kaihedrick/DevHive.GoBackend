@@ -33,8 +33,8 @@ type Message struct {
 	Resource  string      `json:"resource,omitempty"`  // Resource type: project, sprint, task, project_member
 	Action    string      `json:"action,omitempty"`    // Action: INSERT, UPDATE, DELETE
 	Data      interface{} `json:"data"`
-	ProjectID string      `json:"project_id,omitempty"`
-	UserID    string      `json:"user_id,omitempty"`
+	ProjectID string      `json:"projectId,omitempty"`
+	UserID    string      `json:"userId,omitempty"`
 }
 
 // GlobalHub is the global WebSocket hub instance

@@ -24,7 +24,7 @@ var (
 
 // BroadcastEvent is the event received by this Lambda
 type BroadcastEvent struct {
-	ProjectID string      `json:"project_id"`
+	ProjectID string      `json:"projectId"`
 	Type      string      `json:"type"` // e.g., "task_created", "message_created", "cache_invalidate"
 	Data      interface{} `json:"data"`
 	ExcludeConnectionID string `json:"exclude_connection_id,omitempty"` // Don't send to this connection
@@ -40,7 +40,7 @@ type Connection struct {
 // OutgoingMessage is the message sent to WebSocket clients
 type OutgoingMessage struct {
 	Type      string      `json:"type"`
-	ProjectID string      `json:"project_id"`
+	ProjectID string      `json:"projectId"`
 	Data      interface{} `json:"data"`
 	Timestamp string      `json:"timestamp"`
 }

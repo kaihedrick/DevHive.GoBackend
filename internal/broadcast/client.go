@@ -20,7 +20,7 @@ type Client struct {
 
 // BroadcastEvent is the payload sent to the broadcaster Lambda
 type BroadcastEvent struct {
-	ProjectID           string      `json:"project_id"`
+	ProjectID           string      `json:"projectId"`
 	Type                string      `json:"type"`
 	Data                interface{} `json:"data"`
 	ExcludeConnectionID string      `json:"exclude_connection_id,omitempty"`

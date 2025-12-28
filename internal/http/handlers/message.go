@@ -483,9 +483,13 @@ func (h *MessageHandler) WebSocketHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	// Extract project_id from query params
-	projectID := r.URL.Query().Get("project_id")
+	projectID := r.URL.Query().Get("projectId")
 	if projectID == "" {
-		http.Error(w, "Missing project_id", http.StatusBadRequest)
+		// Fallback for backward compatibility
+		projectID = r.URL.Query().Get("project_id")
+	}
+	if projectID == "" {
+		http.Error(w, "Missing projectId", http.StatusBadRequest)
 		return
 	}
 
@@ -599,16 +603,16 @@ func (h *MessageHandler) GetWebSocketStatus(w http.ResponseWriter, r *http.Reque
 	clientDetails := make([]map[string]string, len(userIDs))
 	for i, userID := range userIDs {
 		clientDetails[i] = map[string]string{
-			"user_id":    userID,
-			"project_id": projectID,
+			"userId":    userID,
+			"projectId": projectID,
 		}
 	}
 
 	response.JSON(w, http.StatusOK, map[string]interface{}{
-		"project_id":       projectID,
-		"total_clients":    totalClients,
-		"matching_clients": matchingClients,
-		"clients":          clientDetails,
+		"projectId":       projectID,
+		"totalClients":    totalClients,
+		"matchingClients": matchingClients,
+		"clients":         clientDetails,
 	})
 }
 

@@ -1,6 +1,6 @@
--- Ensure NOTIFY cache invalidation function and triggers exist
--- This migration is idempotent and will create/recreate the function and triggers
--- Safe to run multiple times
+-- Update NOTIFY cache invalidation function to use camelCase 'projectId' in JSON payload
+-- This is a re-application of the logic in 007 to ensure the function is updated
+-- with the correct JSON keys (projectId instead of project_id)
 
 -- Create or replace the NOTIFY function
 CREATE OR REPLACE FUNCTION notify_cache_invalidation()
@@ -66,33 +66,31 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create triggers for projects table (idempotent)
+-- Re-create triggers to ensure they are using the latest function version
+-- (Though CREATE OR REPLACE FUNCTION updates the function in place, so triggers using it will automatically use the new version)
+-- We'll just ensure they exist.
+
 DROP TRIGGER IF EXISTS projects_cache_invalidate ON projects;
 CREATE TRIGGER projects_cache_invalidate
   AFTER INSERT OR UPDATE OR DELETE ON projects
   FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidation();
 
--- Create triggers for sprints table (idempotent)
 DROP TRIGGER IF EXISTS sprints_cache_invalidate ON sprints;
 CREATE TRIGGER sprints_cache_invalidate
   AFTER INSERT OR UPDATE OR DELETE ON sprints
   FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidation();
 
--- Create triggers for tasks table (idempotent)
 DROP TRIGGER IF EXISTS tasks_cache_invalidate ON tasks;
 CREATE TRIGGER tasks_cache_invalidate
   AFTER INSERT OR UPDATE OR DELETE ON tasks
   FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidation();
 
--- Create triggers for project_members table (idempotent)
 DROP TRIGGER IF EXISTS project_members_cache_invalidate ON project_members;
 CREATE TRIGGER project_members_cache_invalidate
   AFTER INSERT OR UPDATE OR DELETE ON project_members
   FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidation();
 
--- Create triggers for messages table (idempotent)
 DROP TRIGGER IF EXISTS messages_cache_invalidate ON messages;
 CREATE TRIGGER messages_cache_invalidate
   AFTER INSERT OR UPDATE OR DELETE ON messages
   FOR EACH ROW EXECUTE FUNCTION notify_cache_invalidation();
-

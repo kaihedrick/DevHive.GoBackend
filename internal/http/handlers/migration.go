@@ -263,8 +263,8 @@ func (h *MigrationHandler) TestNotifyTrigger(w http.ResponseWriter, r *http.Requ
 	response.JSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "Test NOTIFY trigger executed. Check logs for '🔔 RAW NOTIFY received' messages.",
-		"project_id": projectID,
-		"user_id": userID,
+		"projectId": projectID,
+		"userId": userID,
 		"note": "If you see this but no NOTIFY logs, the trigger may not be installed or firing.",
 	})
 }

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -107,7 +108,7 @@ func (h *ProjectHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
 	for _, project := range projects {
 		// Get user's role and permissions for each project
 		userRole, permissions := h.getUserRoleAndPermissions(r.Context(), project.ID, userUUID)
-		
+
 		projectResponse := ProjectResponse{
 			ID:          project.ID.String(),
 			OwnerID:     project.OwnerID.String(),
@@ -131,7 +132,7 @@ func (h *ProjectHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
 			UserRole:    userRole,
 			Permissions: permissions,
 		}
-		
+
 		projectResponses = append(projectResponses, projectResponse)
 	}
 
@@ -579,6 +580,16 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 		"role":      role,
 	})
 
+	// Broadcast cache invalidation
+	payload := map[string]any{
+		"resource":  "project_members",
+		"action":    "INSERT",
+		"id":        fmt.Sprintf("%s:%s", projectID, memberID),
+		"projectId": projectID,
+		"timestamp": time.Now().UTC(),
+	}
+	broadcast.Send(r.Context(), projectID, broadcast.EventCacheInvalidate, payload)
+
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Member added successfully"})
 }
 
@@ -630,11 +641,15 @@ func (h *ProjectHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Broadcast member removed event
-	broadcast.Send(r.Context(), projectID, broadcast.EventMemberRemoved, map[string]string{
-		"userId":    memberID,
+	// Broadcast member removed event (cache invalidation)
+	payload := map[string]any{
+		"resource":  "project_members",
+		"action":    "DELETE",
+		"id":        fmt.Sprintf("%s:%s", projectID, memberID),
 		"projectId": projectID,
-	})
+		"timestamp": time.Now().UTC(),
+	}
+	broadcast.Send(r.Context(), projectID, broadcast.EventCacheInvalidate, payload)
 
 	log.Printf("RemoveMember: Successfully removed user %s from project %s", memberUUID.String(), projectUUID.String())
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Member removed successfully"})
@@ -814,6 +829,16 @@ func (h *ProjectHandler) JoinProject(w http.ResponseWriter, r *http.Request) {
 		"role":      "member",
 	})
 
+	// Broadcast cache invalidation
+	payload := map[string]any{
+		"resource":  "project_members",
+		"action":    "INSERT",
+		"id":        fmt.Sprintf("%s:%s", req.ProjectID, userID),
+		"projectId": req.ProjectID,
+		"timestamp": time.Now().UTC(),
+	}
+	broadcast.Send(r.Context(), req.ProjectID, broadcast.EventCacheInvalidate, payload)
+
 	// Get the project to return
 	project, err := h.queries.GetProjectByID(r.Context(), projectUUID)
 	if err != nil {
@@ -960,6 +985,16 @@ func (h *ProjectHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		"projectId": invite.ProjectID.String(),
 		"role":      "member",
 	})
+
+	// Broadcast cache invalidation
+	payload := map[string]any{
+		"resource":  "project_members",
+		"action":    "INSERT",
+		"id":        fmt.Sprintf("%s:%s", invite.ProjectID.String(), userID),
+		"projectId": invite.ProjectID.String(),
+		"timestamp": time.Now().UTC(),
+	}
+	broadcast.Send(r.Context(), invite.ProjectID.String(), broadcast.EventCacheInvalidate, payload)
 
 	// Increment invite use count
 	err = h.queries.IncrementInviteUseCount(r.Context(), invite.ID)
@@ -1333,7 +1368,7 @@ func (h *ProjectHandler) getUserRoleAndPermissions(ctx context.Context, projectI
 		} else {
 			// member or viewer - can view invites but cannot create/revoke
 			// Note: ListInvites handler allows all members to view invites
-			permissions.CanViewInvites = true  // All members can view invites
+			permissions.CanViewInvites = true    // All members can view invites
 			permissions.CanCreateInvites = false // Only owners/admins can create
 			permissions.CanRevokeInvites = false // Only owners/admins can revoke
 			permissions.CanManageMembers = false

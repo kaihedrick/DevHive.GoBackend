@@ -570,9 +570,22 @@ const (
     EventTaskDeleted     = "task_deleted"
     EventSprintCreated   = "sprint_created"
     EventMessageCreated  = "message_created"
-    EventCacheInvalidate = "cache_invalidate"
+    EventCacheInvalidate = "cache_invalidate" // Used for generic resource updates (e.g. project_members)
+    EventMemberAdded     = "member_added"     // Legacy/UI notification
+    EventMemberRemoved   = "member_removed"   // Legacy/UI notification
 )
 ```
+
+### Member Management Events
+
+For member management (add/remove), the system broadcasts `cache_invalidate` events to ensure all clients refresh their member lists.
+
+**Member Added:**
+- Broadcasts `EventMemberAdded` (for UI toasts)
+- Broadcasts `EventCacheInvalidate` with `action: "INSERT"` and `resource: "project_members"`
+
+**Member Removed:**
+- Broadcasts `EventCacheInvalidate` with `action: "DELETE"` and `resource: "project_members"`
 
 The `Send()` function invokes the broadcaster Lambda asynchronously (`InvocationType: "Event"`).
 
@@ -745,6 +758,16 @@ ws://localhost:8080/api/v1/messages/ws?token=<jwt>&projectId=<uuid>
     "id": "task-uuid",
     "timestamp": "2025-12-22T12:00:00Z"
   }
+}
+
+// Member Management (Cache Invalidation)
+{
+  "type": "cache_invalidate",
+  "resource": "project_members",
+  "action": "INSERT", // or "DELETE"
+  "id": "projectId:userId",
+  "projectId": "uuid-here",
+  "timestamp": "2025-12-27T12:00:00Z"
 }
 
 // Ping (keepalive)

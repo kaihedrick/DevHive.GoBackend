@@ -26,7 +26,7 @@ type CacheInvalidationPayload struct {
 	Resource  string `json:"resource"`
 	ID        string `json:"id"`
 	Action    string `json:"action"`
-	ProjectID string `json:"project_id"`
+	ProjectID string `json:"projectId"`
 	Timestamp string `json:"timestamp"`
 }
 
