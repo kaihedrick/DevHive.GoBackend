@@ -225,14 +225,97 @@ wscat -c "wss://xxx.execute-api.us-west-2.amazonaws.com/prod?token=YOUR_JWT"
 - Use Neon pooler URL (not direct connection)
 - Increase Lambda timeout in template.yaml
 
-### Issue: CORS errors
+### Issue: OPTIONS returns 405 or 500 (CORS preflight failing)
 
-**Cause:** Missing or incorrect CORS configuration
+**Cause:** Lambda is receiving OPTIONS requests instead of API Gateway handling them
+
+**Root Issue:** Using `Method: ANY` in Lambda event configuration causes Lambda to handle OPTIONS requests, which results in 405/500 errors and breaks CORS preflight.
+
+**Solution:**
+
+**In `template.yaml`**, replace `Method: ANY` with explicit method events:
+
+```yaml
+# ❌ WRONG - Lambda handles OPTIONS
+Events:
+  ApiProxy:
+    Type: HttpApi
+    Properties:
+      ApiId: !Ref DevHiveHttpApi
+      Path: /{proxy+}
+      Method: ANY  # This includes OPTIONS!
+
+# ✅ CORRECT - Only send actual HTTP methods to Lambda
+Events:
+  ApiProxyGet:
+    Type: HttpApi
+    Properties:
+      ApiId: !Ref DevHiveHttpApi
+      Path: /{proxy+}
+      Method: GET
+  ApiProxyPost:
+    Type: HttpApi
+    Properties:
+      ApiId: !Ref DevHiveHttpApi
+      Path: /{proxy+}
+      Method: POST
+  # ... repeat for PUT, DELETE, PATCH
+```
+
+**Router Conditional CORS** (`internal/http/router/router.go`):
+
+```go
+// Enable CORS if: (1) not in Lambda at all, OR (2) running in SAM local
+enableAppCors := os.Getenv("AWS_LAMBDA_FUNCTION_NAME") == "" || os.Getenv("AWS_SAM_LOCAL") == "true"
+if enableAppCors {
+    r.Use(cors.Handler(cors.Options{
+        AllowedOrigins:   cfg.CORS.AllowedOrigins,
+        AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
+        AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With", "Origin", "Cookie"},
+        ExposedHeaders:   []string{"Set-Cookie", "X-Request-Id", "Link"},
+        AllowCredentials: cfg.CORS.AllowCredentials,
+        MaxAge:           300,
+    }))
+}
+```
+
+**Verification:**
+```bash
+# Test CORS preflight - should return 204 with NO rate-limit headers
+# (No rate-limit headers = API Gateway handled it, not Lambda)
+curl -i -X OPTIONS https://go.devhive.it.com/api/v1/auth/login \
+  -H "Origin: https://devhive.it.com" \
+  -H "Access-Control-Request-Method: POST"
+
+# Expected response:
+# HTTP/1.1 204 No Content
+# access-control-allow-origin: https://devhive.it.com
+# access-control-allow-methods: DELETE,GET,OPTIONS,PATCH,POST,PUT
+# access-control-allow-credentials: true
+# (NO X-Ratelimit-* headers)
+
+# Test actual endpoint - should work normally with rate-limit headers
+curl -i -X POST https://go.devhive.it.com/api/v1/auth/login \
+  -H "Origin: https://devhive.it.com" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test","password":"test"}'
+
+# Should have X-Ratelimit-* headers (Lambda processed it)
+```
+
+### Issue: CORS errors (duplicate headers)
+
+**Cause:** Both Lambda and API Gateway adding CORS headers
 
 **Solution:**
 1. Check `CORSOrigins` parameter includes your frontend domain
 2. Verify `AllowCredentials: true` in HTTP API CORS config
 3. Ensure frontend uses `withCredentials: true`
+4. **IMPORTANT**: Ensure Lambda event config uses explicit methods (not `ANY`)
+   - See "OPTIONS returns 405 or 500" above
+   - API Gateway handles CORS automatically via `CorsConfiguration` in template.yaml
+   - Router conditionally applies CORS middleware (only local dev + SAM local)
+   - This prevents duplicate/conflicting CORS headers
 
 ### Issue: WebSocket 401 on connect
 
@@ -242,6 +325,86 @@ wscat -c "wss://xxx.execute-api.us-west-2.amazonaws.com/prod?token=YOUR_JWT"
 1. Verify `JWT_SIGNING_KEY` matches between Lambda and token issuer
 2. Check token expiration
 3. Ensure token is passed in `?token=` query parameter
+
+### Issue: WebSocket subscribe not working
+
+**Cause:** Incorrect field name in subscribe message
+
+**Solution:**
+The WebSocket Lambda accepts both `projectId` (camelCase) and `project_id` (snake_case) for backward compatibility:
+
+```json
+// Both formats work:
+{"action": "subscribe", "projectId": "uuid-here"}
+{"action": "subscribe", "project_id": "uuid-here"}
+```
+
+**Recommended**: Use `projectId` (camelCase) for consistency with the rest of the API.
+
+**Implementation**: The `WebSocketMessage` struct in `cmd/websocket/main.go` has both fields:
+```go
+type WebSocketMessage struct {
+    Action       string `json:"action"`
+    ProjectID    string `json:"projectId,omitempty"`
+    ProjectIdAlt string `json:"project_id,omitempty"` // Backward compatibility
+}
+```
+
+### Issue: Lambda receives paths with stage prefix (e.g., `/prod/api/v1/auth/login`)
+
+**Cause:** Using `StageName: prod` adds stage prefix to paths
+
+**Symptoms:**
+- All routes return 404
+- Lambda logs show paths like `POST /prod/api/v1/auth/login`
+- Routes work with direct API Gateway URL but not custom domain
+
+**Solution:**
+
+Use `StageName: $default` in `template.yaml`:
+
+```yaml
+DevHiveHttpApi:
+  Type: AWS::Serverless::HttpApi
+  Properties:
+    StageName: $default  # No stage prefix in paths
+```
+
+**Why this matters:**
+- `StageName: prod` → Lambda receives `/prod/api/v1/...`
+- `StageName: $default` → Lambda receives `/api/v1/...`
+- Your router expects `/api/v1/...` without stage prefix
+
+**Custom Domain Mapping:**
+
+Ensure custom domain is mapped to `$default` stage:
+
+```bash
+# Update API mapping
+aws apigatewayv2 update-api-mapping \
+  --api-id <api-id> \
+  --api-mapping-id <mapping-id> \
+  --domain-name go.devhive.it.com \
+  --stage '$default' \
+  --profile devhive
+
+# Verify
+aws apigatewayv2 get-api-mappings \
+  --domain-name go.devhive.it.com \
+  --profile devhive
+```
+
+**CloudFormation Stage Conflicts:**
+
+If CloudFormation tries to create a stage that conflicts with custom domain mapping:
+
+```bash
+# First update custom domain to new stage
+aws apigatewayv2 update-api-mapping --stage '$default' ...
+
+# Then delete old stage
+aws apigatewayv2 delete-stage --api-id <api-id> --stage-name prod --profile devhive
+```
 
 ### Issue: Circular dependency in CloudFormation
 

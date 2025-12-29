@@ -467,13 +467,46 @@ If you have suggestions for improving the documentation structure or content:
 
 ---
 
-**Last Updated:** 2025-12-27
+**Last Updated:** 2025-12-29
 
-**Documentation Version:** 2.4
+**Documentation Version:** 2.6
 
 **Maintained by:** DevHive Team
 
 **Recent Updates:**
+- **Critical Fix (2025-12-29):** OPTIONS Request Handling & CORS Preflight
+  - **Root cause**: `Method: ANY` in template.yaml caused Lambda to handle OPTIONS requests
+  - Lambda was returning 405/500 on OPTIONS, breaking CORS preflight
+  - **Solution**: Split Lambda events into explicit methods (GET, POST, PUT, DELETE, PATCH)
+  - API Gateway now handles all OPTIONS requests directly (returns 204)
+  - Updated CORS middleware gate to support SAM local: `AWS_SAM_LOCAL == "true" OR AWS_LAMBDA_FUNCTION_NAME == ""`
+  - Removed wildcard OPTIONS handler from router (no longer needed)
+  - **Verification**: OPTIONS requests return 204 with NO rate-limit headers (API Gateway handled)
+  - Updated `aws_deployment.md` with comprehensive OPTIONS troubleshooting guide
+- **Fix (2025-12-29):** API Gateway Stage Configuration
+  - Fixed 404 errors caused by stage prefix in Lambda paths
+  - Changed `StageName: prod` → `StageName: $default` to remove stage prefix
+  - Lambda now receives `/api/v1/...` instead of `/prod/api/v1/...`
+  - Updated custom domain mapping from `prod` to `$default` stage
+  - Direct API Gateway URL: `https://7x1vij0u6k.execute-api.us-west-2.amazonaws.com` (no stage in URL)
+  - Added stage configuration troubleshooting to `aws_deployment.md`
+- **Fix (2025-12-29):** Database Connection
+  - Corrected typo in Neon database URL (`.amazonaws.com` → `.aws.neon.tech`)
+  - Lambda now successfully connects to Neon PostgreSQL
+  - All endpoints functional (login returns proper 401 for invalid credentials)
+- **Fix (2025-12-28):** CORS Configuration
+  - Fixed duplicate CORS headers issue between Lambda middleware and API Gateway
+  - Router now conditionally applies CORS middleware (detects Lambda environment)
+  - Production: API Gateway handles all CORS automatically
+  - Local dev: Chi CORS middleware runs as before
+  - Updated `aws_deployment.md` with CORS troubleshooting guide
+  - Updated `project_architecture.md` with CORS handling details
+- **Fix (2025-12-28):** WebSocket Contract Compatibility
+  - WebSocket Lambda now accepts both `projectId` (camelCase) and `project_id` (snake_case)
+  - Added backward compatibility for subscribe messages
+  - Recommended format: `projectId` (camelCase) for consistency
+  - Updated `realtime_system.md` with dual format examples
+  - Updated `aws_deployment.md` with WebSocket troubleshooting
 - **Docs:** Added completion summary for real-time cache invalidation & messaging implementation
   - Created `Tasks/realtime_cache_invalidation_COMPLETED.md` documenting completed features
   - All real-time features now working: messages, member join/leave, cache invalidation

@@ -164,20 +164,55 @@ Resources:
           FunctionName:
             Ref: BroadcasterFunction
       Events:
-        ApiProxy:
+        ApiProxyGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: DevHiveHttpApi
             Path: /{proxy+}
-            Method: ANY
-        ApiRoot:
+            Method: GET
+        ApiProxyPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: DevHiveHttpApi
+            Path: /{proxy+}
+            Method: POST
+        ApiProxyPut:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: DevHiveHttpApi
+            Path: /{proxy+}
+            Method: PUT
+        ApiProxyDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: DevHiveHttpApi
+            Path: /{proxy+}
+            Method: DELETE
+        ApiProxyPatch:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: DevHiveHttpApi
+            Path: /{proxy+}
+            Method: PATCH
+        ApiRootGet:
           Type: HttpApi
           Properties:
             ApiId:
               Ref: DevHiveHttpApi
             Path: /
-            Method: ANY
+            Method: GET
+        ApiRootPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: DevHiveHttpApi
+            Path: /
+            Method: POST
   DevHiveWebSocketApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:

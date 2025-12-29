@@ -400,6 +400,17 @@ The production deployment uses AWS serverless architecture with three Lambda fun
 ### API Security
 - Rate limiting (100 req/min per IP)
 - CORS with configurable origins
+  - **OPTIONS Request Handling**:
+    - API Gateway handles all OPTIONS (preflight) requests directly
+    - Lambda event config uses explicit methods (GET, POST, PUT, DELETE, PATCH) - NOT `ANY`
+    - Lambda never receives OPTIONS requests (prevents 405/500 errors)
+    - Returns 204 No Content for all valid preflight requests
+  - **CORS Headers**:
+    - **Production (Lambda)**: API Gateway adds headers via `CorsConfiguration` in template.yaml
+    - **Local Development**: Chi CORS middleware handles CORS
+    - **SAM Local**: Chi CORS middleware handles CORS (detected via `AWS_SAM_LOCAL=true`)
+    - **Smart Detection**: Router checks `AWS_LAMBDA_FUNCTION_NAME` and `AWS_SAM_LOCAL` env vars
+    - Prevents duplicate CORS headers that can cause browser errors
 - Request ID tracking for audit logs
 - SQL injection prevention (parameterized queries via SQLC)
 - Input validation on all endpoints

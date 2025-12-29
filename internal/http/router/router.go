@@ -2,6 +2,7 @@ package router
 
 import (
 	"database/sql"
+	"os"
 	"time"
 
 	"devhive-backend/internal/config"
@@ -27,15 +28,20 @@ func Setup(cfg *config.Config, queries *repo.Queries, db interface{}, hub *ws.Hu
 	r.Use(chimiddleware.Logger)
 	r.Use(httprate.LimitByIP(100, 1*time.Minute))
 
-	// CORS middleware
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   cfg.CORS.AllowedOrigins,
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With", "Origin", "Cookie"},
-		ExposedHeaders:   []string{"Set-Cookie", "X-Request-Id", "Link"},
-		AllowCredentials: cfg.CORS.AllowCredentials,
-		MaxAge:           300,
-	}))
+	// CORS middleware - only for local development and SAM local
+	// In real Lambda/production, API Gateway handles CORS automatically
+	// Enable CORS if: (1) not in Lambda at all, OR (2) running in SAM local
+	enableAppCors := os.Getenv("AWS_LAMBDA_FUNCTION_NAME") == "" || os.Getenv("AWS_SAM_LOCAL") == "true"
+	if enableAppCors {
+		r.Use(cors.Handler(cors.Options{
+			AllowedOrigins:   cfg.CORS.AllowedOrigins,
+			AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
+			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With", "Origin", "Cookie"},
+			ExposedHeaders:   []string{"Set-Cookie", "X-Request-Id", "Link"},
+			AllowCredentials: cfg.CORS.AllowCredentials,
+			MaxAge:           300,
+		}))
+	}
 
 	// Health check endpoints
 	r.Get("/health", handlers.HealthCheck)
